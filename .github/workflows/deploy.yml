@@ -3,12 +3,19 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,14 +25,58 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
       - name: Install Dioxus CLI
-        run: cargo install dioxus-cli
+        uses: taiki-e/install-action@v2
+        with:
+          tool: dioxus-cli@0.7.0
 
       - name: Build
         run: dx build --release
 
-      - name: Deploy
-        uses: peaceiris/actions-gh-pages@v4
+      - name: Find build output
+        id: find-output
+        run: |
+          # Find the actual output directory
+          if [ -d "./target/dx/rent-vs-buy-calculator/release/web/public" ]; then
+            echo "dir=./target/dx/rent-vs-buy-calculator/release/web/public" >> $GITHUB_OUTPUT
+          elif [ -d "./target/dx/RentVsBuyWealthCalculator/release/web/public" ]; then
+            echo "dir=./target/dx/RentVsBuyWealthCalculator/release/web/public" >> $GITHUB_OUTPUT
+          elif [ -d "./dist" ]; then
+            echo "dir=./dist" >> $GITHUB_OUTPUT
+          else
+            echo "Looking for build output..."
+            find ./target -name "public" -type d 2>/dev/null || true
+            find ./target -name "*.wasm" -type f 2>/dev/null | head -5 || true
+            ls -la ./target/dx/ 2>/dev/null || true
+            exit 1
+          fi
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./target/dx/rent-vs-buy-calculator/release/web/public
+          path: ${{ steps.find-output.outputs.dir }}
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
