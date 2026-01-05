@@ -216,14 +216,21 @@ fn CharmingLineChart(
             .tooltip(
                 Tooltip::new()
                     .trigger(Trigger::Axis)
-                    .axis_pointer(AxisPointer::new().type_(AxisPointerType::Cross)),
+                    .axis_pointer(AxisPointer::new().type_(AxisPointerType::Line)),
             )
             .legend(
                 Legend::new()
                     .top("bottom")
                     .text_style(TextStyle::new().color(text_color)),
             )
-            .grid(Grid::new().left("12%").right("5%").top("15%").bottom("15%"))
+            .grid(
+                Grid::new()
+                    .left("12%")
+                    .right("5%")
+                    .top("15%")
+                    .bottom("15%")
+                    .contain_label(true),
+            )
             .x_axis(
                 Axis::new()
                     .type_(AxisType::Category)
@@ -231,7 +238,8 @@ fn CharmingLineChart(
                     .name("Year")
                     .name_location(NameLocation::Middle)
                     .name_gap(25)
-                    .axis_label(AxisLabel::new().color(text_color)),
+                    .axis_label(AxisLabel::new().color(text_color))
+                    .axis_pointer(AxisPointer::new().type_(AxisPointerType::Shadow)),
             )
             .y_axis(
                 Axis::new()
@@ -347,14 +355,21 @@ fn CharmingStackedAreaChart(
             .tooltip(
                 Tooltip::new()
                     .trigger(Trigger::Axis)
-                    .axis_pointer(AxisPointer::new().type_(AxisPointerType::Cross)),
+                    .axis_pointer(AxisPointer::new().type_(AxisPointerType::Line)),
             )
             .legend(
                 Legend::new()
                     .top("bottom")
                     .text_style(TextStyle::new().color(text_color)),
             )
-            .grid(Grid::new().left("12%").right("5%").top("15%").bottom("15%"))
+            .grid(
+                Grid::new()
+                    .left("12%")
+                    .right("5%")
+                    .top("15%")
+                    .bottom("15%")
+                    .contain_label(true),
+            )
             .x_axis(
                 Axis::new()
                     .type_(AxisType::Category)
@@ -363,7 +378,8 @@ fn CharmingStackedAreaChart(
                     .name_location(NameLocation::Middle)
                     .name_gap(25)
                     .boundary_gap(false)
-                    .axis_label(AxisLabel::new().color(text_color)),
+                    .axis_label(AxisLabel::new().color(text_color))
+                    .axis_pointer(AxisPointer::new().type_(AxisPointerType::Shadow)),
             )
             .y_axis(
                 Axis::new()
