@@ -298,16 +298,16 @@ function _ZN12wasm_bindgen7convert8closures1_6invoke17h9c0005be513addbdE(arg0, a
     wasm._ZN12wasm_bindgen7convert8closures1_6invoke17h9c0005be513addbdE(arg0, arg1, arg2);
 }
 
-function _ZN12wasm_bindgen7convert8closures1_6invoke17h402fae1b8f4e3745E(arg0, arg1, arg2) {
-    _assertNum(arg0);
-    _assertNum(arg1);
-    wasm._ZN12wasm_bindgen7convert8closures1_6invoke17h402fae1b8f4e3745E(arg0, arg1, arg2);
-}
-
 function _ZN12wasm_bindgen7convert8closures1_6invoke17h0b6011b1d0c80d8bE(arg0, arg1, arg2) {
     _assertNum(arg0);
     _assertNum(arg1);
     wasm._ZN12wasm_bindgen7convert8closures1_6invoke17h0b6011b1d0c80d8bE(arg0, arg1, arg2);
+}
+
+function _ZN12wasm_bindgen7convert8closures1_1_6invoke17h24305346da94e1cbE(arg0, arg1, arg2) {
+    _assertNum(arg0);
+    _assertNum(arg1);
+    wasm._ZN12wasm_bindgen7convert8closures1_1_6invoke17h24305346da94e1cbE(arg0, arg1, arg2);
 }
 
 function _ZN12wasm_bindgen7convert8closures1_6invoke17h99ecf88714f5bbb2E(arg0, arg1, arg2) {
@@ -316,10 +316,10 @@ function _ZN12wasm_bindgen7convert8closures1_6invoke17h99ecf88714f5bbb2E(arg0, a
     wasm._ZN12wasm_bindgen7convert8closures1_6invoke17h99ecf88714f5bbb2E(arg0, arg1, arg2);
 }
 
-function _ZN12wasm_bindgen7convert8closures1_1_6invoke17h24305346da94e1cbE(arg0, arg1, arg2) {
+function _ZN12wasm_bindgen7convert8closures1_6invoke17h402fae1b8f4e3745E(arg0, arg1, arg2) {
     _assertNum(arg0);
     _assertNum(arg1);
-    wasm._ZN12wasm_bindgen7convert8closures1_1_6invoke17h24305346da94e1cbE(arg0, arg1, arg2);
+    wasm._ZN12wasm_bindgen7convert8closures1_6invoke17h402fae1b8f4e3745E(arg0, arg1, arg2);
 }
 
 function _ZN12wasm_bindgen7convert8closures1_6invoke17hd7d04155fe7e1ed5E(arg0, arg1) {

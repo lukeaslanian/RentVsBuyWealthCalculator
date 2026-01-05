@@ -473,7 +473,7 @@ fn HistogramChart(data: Vec<f64>, #[props(default = false)] dark_mode: bool) -> 
             if let Some(document) = window.document() {
                 if let Some(canvas) = document.get_element_by_id("monte-carlo-histogram") {
                     if let Ok(canvas_element) = canvas.dyn_into::<HtmlCanvasElement>() {
-                        draw_histogram(canvas_element, &data);
+                        draw_histogram(canvas_element, &data, dark_mode);
                     }
                 }
             }
@@ -544,11 +544,47 @@ fn calculate_stats(data: &[f64]) -> Stats {
     }
 }
 
-fn draw_histogram(canvas: HtmlCanvasElement, data: &[f64]) {
+fn draw_histogram(canvas: HtmlCanvasElement, data: &[f64], dark_mode: bool) {
+    // Monokai dark theme colors
+    const MONOKAI_BG: RGBColor = RGBColor(45, 42, 46); // #2d2a2e
+    const MONOKAI_FG: RGBColor = RGBColor(252, 252, 250); // #fcfcfa
+    const MONOKAI_GRID: RGBColor = RGBColor(82, 79, 83); // #524f53
+    const MONOKAI_GREEN: RGBColor = RGBColor(169, 220, 118); // #a9dc76
+    const MONOKAI_RED: RGBColor = RGBColor(255, 97, 136); // #ff6188
+    const MONOKAI_PURPLE: RGBColor = RGBColor(171, 157, 242); // #ab9df2
+
+    // Light theme colors
+    const LIGHT_BG: RGBColor = RGBColor(255, 255, 255); // #ffffff
+    const LIGHT_FG: RGBColor = RGBColor(45, 42, 46); // #2d2a2e
+    const LIGHT_GRID: RGBColor = RGBColor(200, 200, 200); // #c8c8c8
+    const LIGHT_GREEN: RGBColor = RGBColor(80, 161, 79); // #50a14f
+    const LIGHT_RED: RGBColor = RGBColor(228, 86, 73); // #e45649
+    const LIGHT_PURPLE: RGBColor = RGBColor(166, 38, 164); // #a626a4
+
+    let (bg_color, fg_color, grid_color, green_color, red_color, purple_color) = if dark_mode {
+        (
+            MONOKAI_BG,
+            MONOKAI_FG,
+            MONOKAI_GRID,
+            MONOKAI_GREEN,
+            MONOKAI_RED,
+            MONOKAI_PURPLE,
+        )
+    } else {
+        (
+            LIGHT_BG,
+            LIGHT_FG,
+            LIGHT_GRID,
+            LIGHT_GREEN,
+            LIGHT_RED,
+            LIGHT_PURPLE,
+        )
+    };
+
     let backend =
         CanvasBackend::with_canvas_object(canvas).expect("Failed to create canvas backend");
     let root = backend.into_drawing_area();
-    root.fill(&WHITE).unwrap();
+    root.fill(&bg_color).unwrap();
 
     if data.is_empty() {
         root.present().unwrap();
@@ -573,7 +609,7 @@ fn draw_histogram(canvas: HtmlCanvasElement, data: &[f64]) {
     let mut chart = ChartBuilder::on(&root)
         .caption(
             "Wealth Difference Distribution",
-            ("sans-serif", 20).into_font(),
+            ("sans-serif", 20).into_font().color(&fg_color),
         )
         .margin(15)
         .x_label_area_size(50)
@@ -586,20 +622,20 @@ fn draw_histogram(canvas: HtmlCanvasElement, data: &[f64]) {
         .x_desc("Wealth Difference (Buy - Rent)")
         .y_desc("Frequency")
         .x_label_formatter(&|v| format_compact(*v))
+        .axis_style(ShapeStyle::from(&fg_color).stroke_width(1))
+        .label_style(("sans-serif", 12).into_font().color(&fg_color))
+        .axis_desc_style(("sans-serif", 14).into_font().color(&fg_color))
+        .light_line_style(ShapeStyle::from(&grid_color).stroke_width(1))
+        .bold_line_style(ShapeStyle::from(&grid_color).stroke_width(2))
         .draw()
         .unwrap();
 
     // Draw histogram bars with color based on positive/negative
-    // Using Monokai green and red colors
     chart
         .draw_series(bins.iter().enumerate().map(|(i, &count)| {
             let x0 = min + (i as f64 * bin_width);
             let x1 = min + ((i + 1) as f64 * bin_width);
-            let color = if x0 >= 0.0 {
-                RGBColor(169, 220, 118) // Monokai green (#a9dc76)
-            } else {
-                RGBColor(255, 97, 136) // Monokai red (#ff6188)
-            };
+            let color = if x0 >= 0.0 { green_color } else { red_color };
             Rectangle::new([(x0, 0), (x1, count)], color.filled())
         }))
         .unwrap();
@@ -610,7 +646,7 @@ fn draw_histogram(canvas: HtmlCanvasElement, data: &[f64]) {
             .draw_series(std::iter::once(PathElement::new(
                 vec![(0.0, 0), (0.0, max_count)],
                 ShapeStyle {
-                    color: RGBColor(171, 157, 242).to_rgba(), // Monokai purple
+                    color: purple_color.to_rgba(),
                     filled: false,
                     stroke_width: 2,
                 },

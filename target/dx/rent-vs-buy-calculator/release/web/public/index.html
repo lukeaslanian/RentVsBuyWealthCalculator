@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>To Buy Or Not To Buy - Rent vs Buy Calculatordioxus | ⛺</title>
+
+        <!-- Tailwind CSS CDN -->
+        <script src="https://cdn.tailwindcss.com"></script>
+        <script>
+            tailwind.config = {
+                darkMode: "class",
+                theme: {
+                    extend: {
+                        colors: {
+                            // Monokai Pro (Dark) - Classic filter
+                            monokai: {
+                                bg: "#2d2a2e",
+                                bgLight: "#353236",
+                                bgLighter: "#403e41",
+                                bgHighlight: "#4a474b",
+                                fg: "#fcfcfa",
+                                fgMuted: "#939293",
+                                fgDim: "#727072",
+                                border: "#5b595c",
+                                // Accent colors
+                                red: "#ff6188",
+                                orange: "#fc9867",
+                                yellow: "#ffd866",
+                                green: "#a9dc76",
+                                blue: "#78dce8",
+                                purple: "#ab9df2",
+                                // UI colors
+                                selection: "#49473b",
+                                cursor: "#fcfcfa",
+                            },
+                            // Monokai Light
+                            monokaiLight: {
+                                bg: "#f8f8f2",
+                                bgLight: "#f1f1eb",
+                                bgDark: "#e8e8e2",
+                                bgHighlight: "#d8d8d2",
+                                fg: "#272822",
+                                fgMuted: "#595959",
+                                fgDim: "#7d7d7d",
+                                border: "#c0c0b8",
+                                // Accent colors (slightly darker for light bg)
+                                red: "#e03e5e",
+                                orange: "#d97130",
+                                yellow: "#c4960a",
+                                green: "#6f9f3f",
+                                blue: "#3ea8b5",
+                                purple: "#8a72c1",
+                            },
+                        },
+                    },
+                },
+            };
+        </script>
+
+        <!-- Font Awesome Icons -->
+        <link
+            rel="stylesheet"
+            href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
+        />
+
+        <style>
+            body {
+                margin: 0;
+                font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+                -webkit-font-smoothing: antialiased;
+                -moz-osx-font-smoothing: grayscale;
+            }
+
+            /* Dark mode scrollbar (Monokai Pro) */
+            .dark ::-webkit-scrollbar {
+                width: 10px;
+            }
+
+            .dark ::-webkit-scrollbar-track {
+                background: #2d2a2e;
+            }
+
+            .dark ::-webkit-scrollbar-thumb {
+                background: #5b595c;
+                border-radius: 5px;
+            }
+
+            .dark ::-webkit-scrollbar-thumb:hover {
+                background: #727072;
+            }
+
+            /* Light mode scrollbar (Monokai Light) */
+            ::-webkit-scrollbar {
+                width: 10px;
+            }
+
+            ::-webkit-scrollbar-track {
+                background: #f1f1eb;
+            }
+
+            ::-webkit-scrollbar-thumb {
+                background: #c0c0b8;
+                border-radius: 5px;
+            }
+
+            ::-webkit-scrollbar-thumb:hover {
+                background: #a0a098;
+            }
+
+            /* Entrance animations */
+            @keyframes fadeInUp {
+                from {
+                    opacity: 0;
+                    transform: translateY(20px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+
+            @keyframes fadeInScale {
+                from {
+                    opacity: 0;
+                    transform: scale(0.95);
+                }
+                to {
+                    opacity: 1;
+                    transform: scale(1);
+                }
+            }
+
+            .animate-fade-in-up {
+                animation: fadeInUp 0.5s ease-out forwards;
+            }
+
+            .animate-fade-in-scale {
+                animation: fadeInScale 0.4s ease-out forwards;
+            }
+
+            .animate-delay-100 {
+                animation-delay: 0.1s;
+                opacity: 0;
+            }
+            .animate-delay-200 {
+                animation-delay: 0.2s;
+                opacity: 0;
+            }
+            .animate-delay-300 {
+                animation-delay: 0.3s;
+                opacity: 0;
+            }
+            .animate-delay-400 {
+                animation-delay: 0.4s;
+                opacity: 0;
+            }
+        </style>
+    <link rel="preload" as="script" href="/./assets/rent-vs-buy-calculator-dxh7bcd16a116f454e1.js" crossorigin></head>
+    <body class="bg-monokaiLight-bg">
+        <div id="main"></div>
+    <script type="module" async src="/./assets/rent-vs-buy-calculator-dxh7bcd16a116f454e1.js"></script>
+            </body>
+</html>
