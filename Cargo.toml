@@ -7,8 +7,7 @@ authors = ["Luke Aslanian"]
 [dependencies]
 dioxus = { version = "0.7", features = ["web"] }
 serde = { version = "1.0", features = ["derive"] }
-plotters = "0.3"
-plotters-canvas = "0.3"
+charming = { version = "0.4", features = ["wasm"] }
 rand = "0.8"
 getrandom = { version = "0.2", features = ["js"] }
 gloo-timers = { version = "0.3", features = ["futures"] }

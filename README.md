@@ -57,28 +57,28 @@ Output will be in the `dist/` directory.
 
 ```
 .
-├── Cargo.toml              # Dependencies and configuration
-├── index.html              # HTML template with Tailwind CSS
+├── Cargo.toml                  # Dependencies and configuration
+├── index.html                  # HTML template with Tailwind CSS
 ├── src/
-│   ├── main.rs             # Entry point
-│   ├── lib.rs              # Library root
-│   ├── models/             # Data models
+│   ├── main.rs                 # Entry point
+│   ├── lib.rs                  # Library root
+│   ├── models/                 # Data models
 │   │   ├── property_data.rs    # Buy parameters (includes tax settings)
 │   │   ├── rental_data.rs      # Rent parameters
 │   │   ├── investment_params.rs
 │   │   ├── financial_results.rs
 │   │   └── city_preset.rs      # 16 city presets
-│   ├── calculators/        # Financial calculation engines
+│   ├── calculators/            # Financial calculation engines
 │   │   ├── mortgage_calculator.rs
 │   │   ├── wealth_analysis_engine.rs
 │   │   ├── breakeven_analyzer.rs
 │   │   └── monte_carlo_simulator.rs
-│   ├── components/         # Dioxus UI components
+│   ├── components/             # Dioxus UI components
 │   │   ├── app.rs
-│   │   ├── input/          # Input panels
-│   │   ├── results/        # Results display
+│   │   ├── input/              # Input panels
+│   │   ├── results/            # Results display
 │   │   └── monte_carlo_panel.rs
-│   └── utils/              # Utilities
+│   └── utils/                  # Utilities
 │       ├── config.rs
 │       ├── currency_formatter.rs
 │       └── validator.rs

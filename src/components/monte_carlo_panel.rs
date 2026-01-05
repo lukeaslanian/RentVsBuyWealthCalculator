@@ -1,11 +1,16 @@
 use crate::calculators::{MonteCarloSimulator, SimulationResults};
 use crate::models::{InvestmentParameters, PropertyData, RentalData};
 use crate::utils::CurrencyFormatter;
+use charming::{
+    component::{Axis, Grid, Title},
+    element::{
+        AxisLabel, AxisType, ItemStyle, LineStyle, MarkLine, MarkLineData, MarkLineVariant,
+        SplitLine, Symbol, TextStyle,
+    },
+    series::Bar,
+    Chart, WasmRenderer,
+};
 use dioxus::prelude::*;
-use plotters::prelude::*;
-use plotters_canvas::CanvasBackend;
-use wasm_bindgen::JsCast;
-use web_sys::HtmlCanvasElement;
 
 #[component]
 pub fn MonteCarloPanel(
@@ -468,16 +473,7 @@ fn StatRow(label: String, value: f64, #[props(default = false)] dark_mode: bool)
 fn HistogramChart(data: Vec<f64>, #[props(default = false)] dark_mode: bool) -> Element {
     use_effect(move || {
         let data = data.clone();
-
-        if let Some(window) = web_sys::window() {
-            if let Some(document) = window.document() {
-                if let Some(canvas) = document.get_element_by_id("monte-carlo-histogram") {
-                    if let Ok(canvas_element) = canvas.dyn_into::<HtmlCanvasElement>() {
-                        draw_histogram(canvas_element, &data, dark_mode);
-                    }
-                }
-            }
-        }
+        draw_histogram(&data, dark_mode);
     });
 
     rsx! {
@@ -490,11 +486,10 @@ fn HistogramChart(data: Vec<f64>, #[props(default = false)] dark_mode: bool) -> 
                 "Histogram showing the distribution of wealth differences (Buy - Rent) across all simulations"
             }
 
-            canvas {
+            div {
                 id: "monte-carlo-histogram",
-                width: "900",
-                height: "400",
-                class: if dark_mode { "w-full border border-monokai-bgLighter rounded" } else { "w-full border border-monokaiLight-border rounded" },
+                style: "width: 100%; height: 400px;",
+                class: if dark_mode { "rounded" } else { "border border-monokaiLight-border rounded" },
             }
         }
     }
@@ -544,24 +539,23 @@ fn calculate_stats(data: &[f64]) -> Stats {
     }
 }
 
-fn draw_histogram(canvas: HtmlCanvasElement, data: &[f64], dark_mode: bool) {
-    // Monokai dark theme colors
-    const MONOKAI_BG: RGBColor = RGBColor(45, 42, 46); // #2d2a2e
-    const MONOKAI_FG: RGBColor = RGBColor(252, 252, 250); // #fcfcfa
-    const MONOKAI_GRID: RGBColor = RGBColor(82, 79, 83); // #524f53
-    const MONOKAI_GREEN: RGBColor = RGBColor(169, 220, 118); // #a9dc76
-    const MONOKAI_RED: RGBColor = RGBColor(255, 97, 136); // #ff6188
-    const MONOKAI_PURPLE: RGBColor = RGBColor(171, 157, 242); // #ab9df2
+fn draw_histogram(data: &[f64], dark_mode: bool) {
+    // Theme colors
+    const MONOKAI_BG: &str = "#2d2a2e";
+    const MONOKAI_FG: &str = "#fcfcfa";
+    const MONOKAI_GRID: &str = "#524f53";
+    const MONOKAI_GREEN: &str = "#a9dc76";
+    const MONOKAI_RED: &str = "#ff6188";
+    const MONOKAI_PURPLE: &str = "#ab9df2";
 
-    // Light theme colors
-    const LIGHT_BG: RGBColor = RGBColor(255, 255, 255); // #ffffff
-    const LIGHT_FG: RGBColor = RGBColor(45, 42, 46); // #2d2a2e
-    const LIGHT_GRID: RGBColor = RGBColor(200, 200, 200); // #c8c8c8
-    const LIGHT_GREEN: RGBColor = RGBColor(80, 161, 79); // #50a14f
-    const LIGHT_RED: RGBColor = RGBColor(228, 86, 73); // #e45649
-    const LIGHT_PURPLE: RGBColor = RGBColor(166, 38, 164); // #a626a4
+    const LIGHT_BG: &str = "#ffffff";
+    const LIGHT_FG: &str = "#2d2a2e";
+    const LIGHT_GRID: &str = "#c8c8c8";
+    const LIGHT_GREEN: &str = "#50a14f";
+    const LIGHT_RED: &str = "#e45649";
+    const LIGHT_PURPLE: &str = "#a626a4";
 
-    let (bg_color, fg_color, grid_color, green_color, red_color, purple_color) = if dark_mode {
+    let (bg_color, text_color, grid_color, green_color, red_color, purple_color) = if dark_mode {
         (
             MONOKAI_BG,
             MONOKAI_FG,
@@ -581,13 +575,7 @@ fn draw_histogram(canvas: HtmlCanvasElement, data: &[f64], dark_mode: bool) {
         )
     };
 
-    let backend =
-        CanvasBackend::with_canvas_object(canvas).expect("Failed to create canvas backend");
-    let root = backend.into_drawing_area();
-    root.fill(&bg_color).unwrap();
-
     if data.is_empty() {
-        root.present().unwrap();
         return;
     }
 
@@ -597,64 +585,112 @@ fn draw_histogram(canvas: HtmlCanvasElement, data: &[f64], dark_mode: bool) {
     let bin_width = (max - min) / num_bins as f64;
 
     // Create histogram bins
-    let mut bins = vec![0usize; num_bins];
+    let mut bins = vec![0i32; num_bins];
     for &value in data {
         let bin_index = ((value - min) / bin_width).floor() as usize;
         let bin_index = bin_index.min(num_bins - 1);
         bins[bin_index] += 1;
     }
 
-    let max_count = bins.iter().cloned().max().unwrap_or(1);
+    // Create bin labels (center of each bin)
+    let bin_labels: Vec<String> = (0..num_bins)
+        .map(|i| {
+            let center = min + (i as f64 + 0.5) * bin_width;
+            format_compact(center)
+        })
+        .collect();
 
-    let mut chart = ChartBuilder::on(&root)
-        .caption(
-            "Wealth Difference Distribution",
-            ("sans-serif", 20).into_font().color(&fg_color),
-        )
-        .margin(15)
-        .x_label_area_size(50)
-        .y_label_area_size(60)
-        .build_cartesian_2d(min..max, 0usize..max_count)
-        .unwrap();
+    // Create separate series for positive and negative values
+    let positive_data: Vec<i32> = bins
+        .iter()
+        .enumerate()
+        .map(|(i, &count)| {
+            let center = min + (i as f64 + 0.5) * bin_width;
+            if center >= 0.0 {
+                count
+            } else {
+                0
+            }
+        })
+        .collect();
 
-    chart
-        .configure_mesh()
-        .x_desc("Wealth Difference (Buy - Rent)")
-        .y_desc("Frequency")
-        .x_label_formatter(&|v| format_compact(*v))
-        .axis_style(ShapeStyle::from(&fg_color).stroke_width(1))
-        .label_style(("sans-serif", 12).into_font().color(&fg_color))
-        .axis_desc_style(("sans-serif", 14).into_font().color(&fg_color))
-        .light_line_style(ShapeStyle::from(&grid_color).stroke_width(1))
-        .bold_line_style(ShapeStyle::from(&grid_color).stroke_width(2))
-        .draw()
-        .unwrap();
+    let negative_data: Vec<i32> = bins
+        .iter()
+        .enumerate()
+        .map(|(i, &count)| {
+            let center = min + (i as f64 + 0.5) * bin_width;
+            if center < 0.0 {
+                count
+            } else {
+                0
+            }
+        })
+        .collect();
 
-    // Draw histogram bars with color based on positive/negative
-    chart
-        .draw_series(bins.iter().enumerate().map(|(i, &count)| {
-            let x0 = min + (i as f64 * bin_width);
-            let x1 = min + ((i + 1) as f64 * bin_width);
-            let color = if x0 >= 0.0 { green_color } else { red_color };
-            Rectangle::new([(x0, 0), (x1, count)], color.filled())
-        }))
-        .unwrap();
+    // Find the zero crossing index for mark line
+    let zero_index = if min < 0.0 && max > 0.0 {
+        Some(((0.0 - min) / bin_width).floor() as i32)
+    } else {
+        None
+    };
 
-    // Draw a vertical line at zero if it's in range
-    if min < 0.0 && max > 0.0 {
-        chart
-            .draw_series(std::iter::once(PathElement::new(
-                vec![(0.0, 0), (0.0, max_count)],
-                ShapeStyle {
-                    color: purple_color.to_rgba(),
-                    filled: false,
-                    stroke_width: 2,
-                },
-            )))
-            .unwrap();
+    let mut positive_bar = Bar::new()
+        .name("Buy Wins")
+        .data(positive_data)
+        .item_style(ItemStyle::new().color(green_color));
+
+    // Add mark line at zero if applicable
+    if let Some(idx) = zero_index {
+        positive_bar = positive_bar.mark_line(
+            MarkLine::new()
+                .symbol(vec![Symbol::None, Symbol::None])
+                .data(vec![MarkLineVariant::Simple(
+                    MarkLineData::new().x_axis(idx).name("$0"),
+                )])
+                .line_style(
+                    LineStyle::new()
+                        .color(purple_color)
+                        .width(2)
+                        .type_(charming::element::LineStyleType::Solid),
+                ),
+        );
     }
 
-    root.present().unwrap();
+    let negative_bar = Bar::new()
+        .name("Rent Wins")
+        .data(negative_data)
+        .item_style(ItemStyle::new().color(red_color));
+
+    let chart = Chart::new()
+        .background_color(bg_color)
+        .title(
+            Title::new()
+                .text("Wealth Difference Distribution")
+                .left("center")
+                .text_style(TextStyle::new().color(text_color).font_size(18)),
+        )
+        .grid(Grid::new().left("10%").right("5%").top("15%").bottom("15%"))
+        .x_axis(
+            Axis::new()
+                .type_(AxisType::Category)
+                .data(bin_labels)
+                .name("Wealth Difference (Buy - Rent)")
+                .name_location(charming::element::NameLocation::Middle)
+                .name_gap(35)
+                .axis_label(AxisLabel::new().color(text_color).interval(9).rotate(45)),
+        )
+        .y_axis(
+            Axis::new()
+                .type_(AxisType::Value)
+                .name("Frequency")
+                .axis_label(AxisLabel::new().color(text_color))
+                .split_line(SplitLine::new().line_style(LineStyle::new().color(grid_color))),
+        )
+        .series(negative_bar)
+        .series(positive_bar);
+
+    let renderer = WasmRenderer::new(900, 400);
+    let _ = renderer.render("monte-carlo-histogram", &chart);
 }
 
 fn format_compact(value: f64) -> String {
