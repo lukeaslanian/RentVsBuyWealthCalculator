@@ -109,41 +109,9 @@ The built application is a static site that can be deployed to:
 
 Deploy the contents of the `dist/` directory.
 
-### GitHub Pages with GitHub Actions
+### GitHub Pages
 
-Create `.github/workflows/deploy.yml`:
-
-```yaml
-name: Deploy to GitHub Pages
-
-on:
-  push:
-    branches: [ main ]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-    
-    - name: Install Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        target: wasm32-unknown-unknown
-    
-    - name: Install Dioxus CLI
-      run: cargo install dioxus-cli
-    
-    - name: Build
-      run: dx build --release
-    
-    - name: Deploy
-      uses: peaceiris/actions-gh-pages@v3
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: ./dist
-```
+This repo includes a GitHub Actions workflow (`.github/workflows/deploy.yml`) that automatically builds and deploys to GitHub Pages on push to `main`.
 
 ## License
 
