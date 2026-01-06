@@ -11,6 +11,33 @@ use charming::{
 };
 use dioxus::prelude::*;
 
+/// Get the width for charts based on window size, optimized for mobile
+fn get_chart_width() -> u32 {
+    web_sys::window()
+        .and_then(|w| w.inner_width().ok())
+        .and_then(|w| w.as_f64())
+        .map(|w| {
+            let window_width = w as u32;
+            if window_width <= 320 {
+                // Very small mobile: minimal padding
+                window_width.saturating_sub(32).max(200)
+            } else if window_width < 480 {
+                // Small mobile: tight padding
+                window_width.saturating_sub(40).max(240)
+            } else if window_width < 640 {
+                // Mobile: standard padding
+                window_width.saturating_sub(56).max(280)
+            } else if window_width < 1024 {
+                // Tablet: account for container padding
+                window_width.saturating_sub(80).max(350)
+            } else {
+                // Desktop: 2-column grid, so roughly half width minus gaps
+                ((window_width - 120) / 2).min(550).max(350)
+            }
+        })
+        .unwrap_or(300)
+}
+
 // Monokai theme colors
 const MONOKAI_CYAN: &str = "#66d9ef";
 const MONOKAI_RED: &str = "#ff6188";
@@ -185,8 +212,11 @@ fn CharmingLineChart(
                 MarkLine::new()
                     .symbol(vec![Symbol::None, Symbol::None])
                     .data(vec![MarkLineVariant::Simple(
-                        MarkLineData::new().x_axis(year).name("Break-even"),
+                        MarkLineData::new()
+                            .x_axis(year)
+                            .name(format!("Break-even Year: {}", year)),
                     )])
+                    .label(charming::element::Label::new().formatter("{b}"))
                     .line_style(
                         LineStyle::new()
                             .color(MONOKAI_YELLOW)
@@ -211,7 +241,7 @@ fn CharmingLineChart(
                 Title::new()
                     .text(&title)
                     .left("center")
-                    .text_style(TextStyle::new().color(text_color).font_size(18)),
+                    .text_style(TextStyle::new().color(text_color).font_size(16)),
             )
             .tooltip(
                 Tooltip::new()
@@ -225,10 +255,10 @@ fn CharmingLineChart(
             )
             .grid(
                 Grid::new()
-                    .left("12%")
+                    .left("15%")
                     .right("5%")
-                    .top("15%")
-                    .bottom("15%")
+                    .top("18%")
+                    .bottom("18%")
                     .contain_label(true),
             )
             .x_axis(
@@ -250,20 +280,30 @@ fn CharmingLineChart(
             .series(line1)
             .series(line2);
 
-        let renderer = WasmRenderer::new(700, 400);
+        // Get width dynamically for responsive sizing
+        let width = get_chart_width();
+        let height = if width < 300 {
+            (width as f32 * 0.75) as u32 // Taller ratio for very small
+        } else if width < 400 {
+            (width as f32 * 0.7).min(280.0) as u32
+        } else {
+            (width as f32 * 0.6).min(350.0) as u32
+        };
+
+        let renderer = WasmRenderer::new(width, height);
         let _ = renderer.render(&chart_id, &chart);
     });
 
     rsx! {
-        div { class: if dark_mode { "bg-monokai-bgLight rounded-lg shadow-md p-4" } else { "bg-monokaiLight-bgLight rounded-lg shadow-md p-4" },
-            div { class: if dark_mode { "bg-monokai-bgLighter border border-monokai-bgLighter rounded p-2 mb-3" } else { "bg-monokaiLight-bg border border-monokaiLight-border rounded p-2 mb-3" },
-                p { class: if dark_mode { "text-xs text-monokai-fgMuted text-center" } else { "text-xs text-monokaiLight-fgMuted text-center" },
+        div {
+            class: if dark_mode { "bg-monokai-bgLight rounded-lg shadow-md p-2 sm:p-4 w-full overflow-hidden" } else { "bg-monokaiLight-bgLight rounded-lg shadow-md p-2 sm:p-4 w-full overflow-hidden" },
+            div { class: if dark_mode { "bg-monokai-bgLighter border border-monokai-bgLighter rounded p-1.5 sm:p-2 mb-2 sm:mb-3" } else { "bg-monokaiLight-bg border border-monokaiLight-border rounded p-1.5 sm:p-2 mb-2 sm:mb-3" },
+                p { class: if dark_mode { "text-xs text-monokai-fgMuted text-center leading-tight" } else { "text-xs text-monokaiLight-fgMuted text-center leading-tight" },
                     "{description}"
                 }
             }
             div {
                 id: "{chart_id}",
-                style: "width: 100%; height: 400px;",
                 class: if dark_mode { "rounded" } else { "border border-monokaiLight-border rounded" },
             }
         }
@@ -350,7 +390,7 @@ fn CharmingStackedAreaChart(
                 Title::new()
                     .text(&title)
                     .left("center")
-                    .text_style(TextStyle::new().color(text_color).font_size(18)),
+                    .text_style(TextStyle::new().color(text_color).font_size(16)),
             )
             .tooltip(
                 Tooltip::new()
@@ -364,10 +404,10 @@ fn CharmingStackedAreaChart(
             )
             .grid(
                 Grid::new()
-                    .left("12%")
+                    .left("15%")
                     .right("5%")
-                    .top("15%")
-                    .bottom("15%")
+                    .top("18%")
+                    .bottom("18%")
                     .contain_label(true),
             )
             .x_axis(
@@ -390,20 +430,30 @@ fn CharmingStackedAreaChart(
             .series(area1)
             .series(area2);
 
-        let renderer = WasmRenderer::new(700, 400);
+        // Get width dynamically for responsive sizing
+        let width = get_chart_width();
+        let height = if width < 300 {
+            (width as f32 * 0.75) as u32 // Taller ratio for very small
+        } else if width < 400 {
+            (width as f32 * 0.7).min(280.0) as u32
+        } else {
+            (width as f32 * 0.6).min(350.0) as u32
+        };
+
+        let renderer = WasmRenderer::new(width, height);
         let _ = renderer.render(&chart_id, &chart);
     });
 
     rsx! {
-        div { class: if dark_mode { "bg-monokai-bgLight rounded-lg shadow-md p-4" } else { "bg-monokaiLight-bgLight rounded-lg shadow-md p-4" },
-            div { class: if dark_mode { "bg-monokai-bgLighter border border-monokai-bgLighter rounded p-2 mb-3" } else { "bg-monokaiLight-bg border border-monokaiLight-border rounded p-2 mb-3" },
-                p { class: if dark_mode { "text-xs text-monokai-fgMuted text-center" } else { "text-xs text-monokaiLight-fgMuted text-center" },
+        div {
+            class: if dark_mode { "bg-monokai-bgLight rounded-lg shadow-md p-2 sm:p-4 w-full overflow-hidden" } else { "bg-monokaiLight-bgLight rounded-lg shadow-md p-2 sm:p-4 w-full overflow-hidden" },
+            div { class: if dark_mode { "bg-monokai-bgLighter border border-monokai-bgLighter rounded p-1.5 sm:p-2 mb-2 sm:mb-3" } else { "bg-monokaiLight-bg border border-monokaiLight-border rounded p-1.5 sm:p-2 mb-2 sm:mb-3" },
+                p { class: if dark_mode { "text-xs text-monokai-fgMuted text-center leading-tight" } else { "text-xs text-monokaiLight-fgMuted text-center leading-tight" },
                     "{description}"
                 }
             }
             div {
                 id: "{chart_id}",
-                style: "width: 100%; height: 400px;",
                 class: if dark_mode { "rounded" } else { "border border-monokaiLight-border rounded" },
             }
         }

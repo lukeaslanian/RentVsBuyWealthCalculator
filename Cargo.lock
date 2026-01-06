@@ -2190,10 +2190,13 @@ dependencies = [
  "console_error_panic_hook",
  "dioxus",
  "getrandom 0.2.16",
+ "gloo-net",
  "gloo-timers",
  "rand 0.8.5",
  "serde",
+ "serde_json",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
 ]
 

@@ -157,25 +157,31 @@ pub fn App() -> Element {
                                 }
                             } else {
                                 if dark_mode() {
-                                    if results.read().is_some() {
-                                        "px-6 py-3 text-sm font-medium bg-monokai-bgLighter text-monokai-fgMuted rounded-t-lg border border-monokai-border hover:bg-monokai-bgHighlight hover:text-monokai-fg transition ml-1"
-                                    } else {
-                                        "px-6 py-3 text-sm font-medium bg-monokai-bg text-monokai-fgDim rounded-t-lg border border-monokai-bgLighter cursor-not-allowed ml-1"
-                                    }
+                                    "px-6 py-3 text-sm font-medium bg-monokai-bgLighter text-monokai-fgMuted rounded-t-lg border border-monokai-border hover:bg-monokai-bgHighlight hover:text-monokai-fg transition ml-1"
                                 } else {
-                                    if results.read().is_some() {
-                                        "px-6 py-3 text-sm font-medium bg-monokaiLight-bgDark text-monokaiLight-fgMuted rounded-t-lg border border-monokaiLight-border hover:bg-monokaiLight-bgHighlight hover:text-monokaiLight-fg transition ml-1"
-                                    } else {
-                                        "px-6 py-3 text-sm font-medium bg-monokaiLight-bg text-monokaiLight-fgDim rounded-t-lg border border-monokaiLight-bgDark cursor-not-allowed ml-1"
-                                    }
+                                    "px-6 py-3 text-sm font-medium bg-monokaiLight-bgDark text-monokaiLight-fgMuted rounded-t-lg border border-monokaiLight-border hover:bg-monokaiLight-bgHighlight hover:text-monokaiLight-fg transition ml-1"
                                 }
                             },
                             onclick: move |_| {
-                                if results.read().is_some() {
-                                    active_tab.set(1);
+                                // Auto-calculate if no results yet
+                                if results.read().is_none() {
+                                    let prop = property_data.read();
+                                    let rent = rental_data.read();
+
+                                    if prop.is_valid() && rent.is_valid() {
+                                        let mut engine = WealthAnalysisEngine::new(
+                                            prop.clone(),
+                                            rent.clone(),
+                                            investment_params.read().clone()
+                                        );
+                                        engine.run_analysis();
+                                        if let Some(calc_results) = engine.results() {
+                                            results.set(Some(calc_results.clone()));
+                                        }
+                                    }
                                 }
+                                active_tab.set(1);
                             },
-                            disabled: results.read().is_none(),
                             "Results"
                         }
                         button {

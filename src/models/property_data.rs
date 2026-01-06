@@ -58,36 +58,35 @@ pub struct PropertyData {
 }
 
 impl Default for PropertyData {
-    /// Default constructor using real Washington DC Loan Estimate details (December 2025)
-    /// Purchase price: $299,999, 3% down ($9,000), 5.99% interest
+    /// Default constructor using Washington DC 2-bedroom preset values (January 2026)
+    /// Based on current DC condo market data
     fn default() -> Self {
         Self {
-            // Updated defaults from Chase Loan Estimate (December 2025)
-            home_price: 299999.0,
-            down_payment_percent: 3.0, // 3% down = $9,000
-            interest_rate: 5.99,       // Real DC mortgage offer rate
-            mortgage_points: 0.0,      // No points by default
-            property_tax_rate: 0.835,  // DC property tax rate from estimate
-            home_insurance_annual: 1200.0,
+            // DC 2-bedroom defaults (updated January 2026)
+            home_price: 575000.0,
+            down_payment_percent: 3.0,
+            interest_rate: 5.99,
+            mortgage_points: 0.0,
+            property_tax_rate: 0.835, // DC property tax rate
+            home_insurance_annual: 1700.0,
             maintenance_percent: 1.0,
-            hoa_fee: 600.0,             // typical 2-bedroom condo fee from estimate
-            hoa_fee_increase_rate: 3.0, // HOA fees typically increase with inflation
+            hoa_fee: 650.0,
+            hoa_fee_increase_rate: 3.0,
             non_included_utilities: 200.0,
             lender_grant: 0.0,
-            closing_costs_percent_purchase: 4.0, // ~4% of home price for purchase closing costs
-            seller_closing_assistance: 2.0,
-            closing_costs_percent_sale: 6.0, // ~6% of home price for selling
-            home_appreciation_rate: 3.5,     // DC historical appreciation
-            // PMI from Chase estimate: $65/month
+            closing_costs_percent_purchase: 4.0,
+            seller_closing_assistance: 0.0,
+            closing_costs_percent_sale: 6.0,
+            home_appreciation_rate: 3.5,
             monthly_pmi: 65.0,
-            pmi_drop_off_ltv: 78.0, // PMI drops off at 78% LTV
+            pmi_drop_off_ltv: 78.0,
 
             // Tax benefits - disabled by default
             enable_tax_benefits: false,
             filing_status: FilingStatus::Single,
-            marginal_tax_rate: 22.0, // Common marginal rate
+            marginal_tax_rate: 22.0,
             other_itemized_deductions: 0.0,
-            hoa_deduction_percent: 0.0, // Most HOA fees are not deductible
+            hoa_deduction_percent: 0.0,
         }
     }
 }
@@ -243,7 +242,7 @@ mod tests {
     #[test]
     fn test_default_values() {
         let data = PropertyData::new();
-        assert_eq!(data.home_price, 299999.0);
+        assert_eq!(data.home_price, 575000.0);
         assert_eq!(data.down_payment_percent, 3.0);
         assert_eq!(data.interest_rate, 5.99);
     }
@@ -251,13 +250,13 @@ mod tests {
     #[test]
     fn test_down_payment_calculation() {
         let data = PropertyData::new();
-        assert_eq!(data.down_payment_amount(), 299999.0 * 0.03);
+        assert_eq!(data.down_payment_amount(), 575000.0 * 0.03);
     }
 
     #[test]
     fn test_loan_amount() {
         let data = PropertyData::new();
-        let expected_loan = 299999.0 - (299999.0 * 0.03);
+        let expected_loan = 575000.0 - (575000.0 * 0.03);
         assert_eq!(data.loan_amount(), expected_loan);
     }
 

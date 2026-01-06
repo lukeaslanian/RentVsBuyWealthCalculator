@@ -15,19 +15,19 @@ pub struct RentalData {
 }
 
 impl Default for RentalData {
-    /// Default constructor using realistic DC 2-bedroom rental values
+    /// Default constructor using Washington DC 2-bedroom preset values (January 2026)
     fn default() -> Self {
-        let monthly_rent = 2350.0; // Comparable DC 2BR rent
+        let monthly_rent = 3200.0; // DC 2BR rent (updated January 2026)
         Self {
             monthly_rent,
-            amenity_fees: 50.0,
+            amenity_fees: 75.0,
             rent_included_utilities: 0.0,
             rent_non_included_utilities: 150.0,
             renters_insurance: 25.0,
-            rent_increase_rate: 4.0, // DC historical rent increase rate
-            security_deposit: monthly_rent, // Default to 1 month's rent
-            enable_broker_fee: false, // Disabled by default (not common outside NYC)
-            broker_fee_percent: 15.0, // 15% of annual rent when enabled
+            rent_increase_rate: 4.0,
+            security_deposit: monthly_rent,
+            enable_broker_fee: false,
+            broker_fee_percent: 15.0,
         }
     }
 }
@@ -84,14 +84,14 @@ mod tests {
     #[test]
     fn test_default_values() {
         let data = RentalData::new();
-        assert_eq!(data.monthly_rent, 2350.0);
+        assert_eq!(data.monthly_rent, 3200.0);
         assert_eq!(data.rent_increase_rate, 4.0);
     }
 
     #[test]
     fn test_total_monthly_cost() {
         let data = RentalData::new();
-        let expected = 2350.0 + 50.0 + 150.0 + 25.0;
+        let expected = 3200.0 + 75.0 + 150.0 + 25.0;
         assert_eq!(data.total_monthly_rent_cost(), expected);
     }
 
@@ -99,9 +99,9 @@ mod tests {
     fn test_rent_at_year() {
         let data = RentalData::new();
         // Year 1 should be base rent
-        assert_eq!(data.rent_at_year(1), 2350.0);
+        assert_eq!(data.rent_at_year(1), 3200.0);
         // Year 2 should be base rent * 1.04
-        assert!((data.rent_at_year(2) - 2444.0).abs() < 0.1);
+        assert!((data.rent_at_year(2) - 3328.0).abs() < 0.1);
     }
 
     #[test]

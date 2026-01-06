@@ -373,10 +373,10 @@ mod tests {
         let engine = WealthAnalysisEngine::new(property_data, rental_data, investment_params);
 
         // At year 0, value should equal initial price
-        assert!((engine.calculate_home_value_at_year(0) - 299999.0).abs() < 1.0);
+        assert!((engine.calculate_home_value_at_year(0) - 575000.0).abs() < 1.0);
 
         // After 10 years at 3.5% appreciation, value should be higher
         let value_year_10 = engine.calculate_home_value_at_year(10);
-        assert!(value_year_10 > 299999.0);
+        assert!(value_year_10 > 575000.0);
     }
 }

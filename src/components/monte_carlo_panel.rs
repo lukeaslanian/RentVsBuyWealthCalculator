@@ -12,6 +12,28 @@ use charming::{
 };
 use dioxus::prelude::*;
 
+/// Get the width for charts based on window size, optimized for mobile
+fn get_chart_width() -> u32 {
+    web_sys::window()
+        .and_then(|w| w.inner_width().ok())
+        .and_then(|w| w.as_f64())
+        .map(|w| {
+            let window_width = w as u32;
+            if window_width <= 320 {
+                window_width.saturating_sub(32).max(200)
+            } else if window_width < 480 {
+                window_width.saturating_sub(40).max(240)
+            } else if window_width < 640 {
+                window_width.saturating_sub(56).max(280)
+            } else if window_width < 1024 {
+                window_width.saturating_sub(80).max(350)
+            } else {
+                window_width.saturating_sub(120).min(800).max(400)
+            }
+        })
+        .unwrap_or(300)
+}
+
 #[component]
 pub fn MonteCarloPanel(
     property_data: PropertyData,
@@ -689,7 +711,16 @@ fn draw_histogram(data: &[f64], dark_mode: bool) {
         .series(negative_bar)
         .series(positive_bar);
 
-    let renderer = WasmRenderer::new(900, 400);
+    let width = get_chart_width();
+    let height = if width < 300 {
+        (width as f32 * 0.75) as u32
+    } else if width < 400 {
+        (width as f32 * 0.7).min(280.0) as u32
+    } else {
+        (width as f32 * 0.5).min(350.0) as u32
+    };
+
+    let renderer = WasmRenderer::new(width, height);
     let _ = renderer.render("monte-carlo-histogram", &chart);
 }
 

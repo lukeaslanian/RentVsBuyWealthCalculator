@@ -339,7 +339,7 @@ impl CityPreset {
             seller_closing_assistance: 0.0,
             closing_costs_percent_sale: 6.0,
             home_appreciation_rate: 3.5,
-            monthly_rent: 3200.0,
+            monthly_rent: 3400.0,
             amenity_fees: 75.0,
             rent_included_utilities: 0.0,
             rent_non_included_utilities: 150.0,
@@ -439,26 +439,26 @@ impl CityPreset {
         Self {
             city_name: "San Francisco".to_string(),
             bedroom_type: "Studio".to_string(),
-            home_price: 650000.0,
+            home_price: 575000.0,
             down_payment_percent: 3.0,
             interest_rate: 5.99,
-            property_tax_rate: 1.2,
-            home_insurance_annual: 1600.0,
+            property_tax_rate: 1.18,
+            home_insurance_annual: 1500.0,
             maintenance_percent: 1.0,
-            hoa_fee: 450.0,
+            hoa_fee: 500.0,
             included_utilities: 0.0,
-            non_included_utilities: 170.0,
+            non_included_utilities: 160.0,
             lender_grant: 0.0,
-            closing_costs_percent_purchase: 4.15,
+            closing_costs_percent_purchase: 4.0,
             seller_closing_assistance: 0.0,
             closing_costs_percent_sale: 6.0,
-            home_appreciation_rate: 5.0,
-            monthly_rent: 2900.0,
-            amenity_fees: 65.0,
+            home_appreciation_rate: 4.0,
+            monthly_rent: 2600.0,
+            amenity_fees: 50.0,
             rent_included_utilities: 0.0,
-            rent_non_included_utilities: 160.0,
-            renters_insurance: 35.0,
-            rent_increase_rate: 5.0,
+            rent_non_included_utilities: 150.0,
+            renters_insurance: 30.0,
+            rent_increase_rate: 4.0,
             annual_return_rate: 7.0,
         }
     }
@@ -467,26 +467,26 @@ impl CityPreset {
         Self {
             city_name: "San Francisco".to_string(),
             bedroom_type: "1".to_string(),
-            home_price: 875000.0,
+            home_price: 800000.0,
             down_payment_percent: 3.0,
             interest_rate: 5.99,
-            property_tax_rate: 1.2,
-            home_insurance_annual: 1900.0,
+            property_tax_rate: 1.18,
+            home_insurance_annual: 1800.0,
             maintenance_percent: 1.0,
-            hoa_fee: 550.0,
+            hoa_fee: 600.0,
             included_utilities: 0.0,
-            non_included_utilities: 180.0,
+            non_included_utilities: 170.0,
             lender_grant: 0.0,
-            closing_costs_percent_purchase: 4.11,
+            closing_costs_percent_purchase: 4.0,
             seller_closing_assistance: 0.0,
             closing_costs_percent_sale: 6.0,
-            home_appreciation_rate: 5.0,
-            monthly_rent: 3800.0,
-            amenity_fees: 75.0,
+            home_appreciation_rate: 4.0,
+            monthly_rent: 3400.0,
+            amenity_fees: 60.0,
             rent_included_utilities: 0.0,
-            rent_non_included_utilities: 170.0,
-            renters_insurance: 37.0,
-            rent_increase_rate: 5.0,
+            rent_non_included_utilities: 160.0,
+            renters_insurance: 32.0,
+            rent_increase_rate: 4.0,
             annual_return_rate: 7.0,
         }
     }
@@ -495,26 +495,26 @@ impl CityPreset {
         Self {
             city_name: "San Francisco".to_string(),
             bedroom_type: "2".to_string(),
-            home_price: 1100000.0,
+            home_price: 1050000.0,
             down_payment_percent: 3.0,
             interest_rate: 5.99,
-            property_tax_rate: 1.2,
-            home_insurance_annual: 2200.0,
+            property_tax_rate: 1.18,
+            home_insurance_annual: 2100.0,
             maintenance_percent: 1.0,
-            hoa_fee: 650.0,
+            hoa_fee: 700.0,
             included_utilities: 0.0,
-            non_included_utilities: 190.0,
+            non_included_utilities: 180.0,
             lender_grant: 0.0,
-            closing_costs_percent_purchase: 4.09,
+            closing_costs_percent_purchase: 4.0,
             seller_closing_assistance: 0.0,
             closing_costs_percent_sale: 6.0,
-            home_appreciation_rate: 5.0,
-            monthly_rent: 4800.0,
-            amenity_fees: 85.0,
+            home_appreciation_rate: 4.0,
+            monthly_rent: 4600.0,
+            amenity_fees: 75.0,
             rent_included_utilities: 0.0,
-            rent_non_included_utilities: 180.0,
-            renters_insurance: 40.0,
-            rent_increase_rate: 5.0,
+            rent_non_included_utilities: 170.0,
+            renters_insurance: 35.0,
+            rent_increase_rate: 4.0,
             annual_return_rate: 7.0,
         }
     }
@@ -523,26 +523,26 @@ impl CityPreset {
         Self {
             city_name: "San Francisco".to_string(),
             bedroom_type: "3".to_string(),
-            home_price: 1500000.0,
+            home_price: 1400000.0,
             down_payment_percent: 3.0,
             interest_rate: 5.99,
-            property_tax_rate: 1.2,
-            home_insurance_annual: 2600.0,
+            property_tax_rate: 1.18,
+            home_insurance_annual: 2500.0,
             maintenance_percent: 1.0,
-            hoa_fee: 800.0,
+            hoa_fee: 850.0,
             included_utilities: 0.0,
-            non_included_utilities: 210.0,
+            non_included_utilities: 200.0,
             lender_grant: 0.0,
             closing_costs_percent_purchase: 4.0,
             seller_closing_assistance: 0.0,
             closing_costs_percent_sale: 6.0,
-            home_appreciation_rate: 5.0,
-            monthly_rent: 6500.0,
+            home_appreciation_rate: 4.0,
+            monthly_rent: 6000.0,
             amenity_fees: 100.0,
             rent_included_utilities: 0.0,
-            rent_non_included_utilities: 200.0,
-            renters_insurance: 45.0,
-            rent_increase_rate: 5.0,
+            rent_non_included_utilities: 190.0,
+            renters_insurance: 40.0,
+            rent_increase_rate: 4.0,
             annual_return_rate: 7.0,
         }
     }
@@ -584,15 +584,15 @@ mod tests {
     fn test_dc_two_bedroom() {
         let preset = CityPreset::dc_two_bedroom();
         assert_eq!(preset.city_name, "Washington DC");
-        assert_eq!(preset.home_price, 299999.0);
-        assert_eq!(preset.monthly_rent, 2750.0);
+        assert_eq!(preset.home_price, 575000.0);
+        assert_eq!(preset.monthly_rent, 3200.0);
     }
 
     #[test]
     fn test_to_property_data() {
         let preset = CityPreset::dc_two_bedroom();
         let property_data = preset.to_property_data();
-        assert_eq!(property_data.home_price, 299999.0);
+        assert_eq!(property_data.home_price, 575000.0);
         assert_eq!(property_data.interest_rate, 5.99);
     }
 
@@ -600,7 +600,7 @@ mod tests {
     fn test_to_rental_data() {
         let preset = CityPreset::dc_two_bedroom();
         let rental_data = preset.to_rental_data();
-        assert_eq!(rental_data.monthly_rent, 2750.0);
+        assert_eq!(rental_data.monthly_rent, 3200.0);
         assert_eq!(rental_data.rent_increase_rate, 4.0);
     }
 
