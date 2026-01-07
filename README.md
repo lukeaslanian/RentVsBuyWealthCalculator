@@ -1,8 +1,23 @@
-# Rent vs Buy Calculator
+## To Buy Or Not To Buy: A Comprehensive Rent vs Buy Calculator with Ample Analytics
 
-A comprehensive financial calculator comparing the long-term wealth outcomes of buying vs. renting a home over 30 years (or a time period of your choice), built with Rust and Dioxus for WebAssembly deployment. 
+An interactice financial calculator comparing the long-term wealth outcomes of buying vs. renting a home over 30 years (or a time period of your choice), built with Rust and Dioxus for WebAssembly deployment. 
+
+Unlike most Rent vs. Buy Calculators that I am aware of, this app assumes that the renter invests what they _would have spent_ on a down payment and closing costs into index funds or other investments. It also differs from most Rent vs. Buy calculators in that it assumes that each month, the hypothetical person who has lower monthly costs (than they would have had they chosen the other modality) invests the amount they 'saved' that month. These changes make the calculator fairer to (at least finacially savvy) renters and make it more of a hypothetical "wealth" calculator than just a cost comparison calculator. 
+
+I also added a [Monte Carlo](https://en.wikipedia.org/wiki/Monte_Carlo_method) feature I haven't ever seen in a Rent vs. Buy calculator before that accounts for some of the randomness that could exist in real life variations of our hypothetical renter and buyer. The result is a % and a "X out of Y times" result of which modality was better in our simulation.
 
 I built this app after completing a Java & Swing version for one of my Harvard Extension School Courses, as I wanted to make a much more modern and web-friendly (or in this case due to Dioxus' strengths, an almost platform-agnostic) version of my app!
+
+## Screenshots
+
+Input Panel:
+<img width="1904" height="926" alt="image" src="https://github.com/user-attachments/assets/0adbe7c1-6112-4a3f-91a7-87365a9ca366" />
+
+Results Panel:
+<img width="1340" height="929" alt="image" src="https://github.com/user-attachments/assets/1f18695c-1461-410c-bb47-d7f64c0e6cc1" />
+
+Monte Carlo Panel:
+<img width="1047" height="932" alt="image" src="https://github.com/user-attachments/assets/3c996702-413c-4d24-9409-3dd8c42435c0" />
 
 ## Features
 
