@@ -84,11 +84,11 @@ Output will be in the `dist/` directory.
 │       └── validator.rs
 ```
 
-## Technology Stack
+## Tech Stack
 
 - **Dioxus 0.7**: React-like framework for Rust
 - **WebAssembly**: Compile to WASM for browser execution
-- **Plotters**: Rust-native charting library
+- **Charming**: Rust charting library based on Apache EChart
 - **Tailwind CSS**: Utility-first CSS framework
 - **Serde**: Serialization/deserialization
 
