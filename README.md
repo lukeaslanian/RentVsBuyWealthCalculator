@@ -1,18 +1,20 @@
 # Rent vs Buy Calculator
 
-A comprehensive financial calculator comparing the long-term wealth outcomes of buying vs. renting a home over 30 years or a time period of your choice, built with Rust and Dioxus for WebAssembly deployment.
+A comprehensive financial calculator comparing the long-term wealth outcomes of buying vs. renting a home over 30 years (or a time period of your choice), built with Rust and Dioxus for WebAssembly deployment. 
+
+I built this app after completing a Java & Swing version for one of my Harvard Extension School Courses, as I wanted to make a much more modern and web-friendly (or in this case due to Dioxus' strengths, an almost platform-agnostic) version of my app!
 
 ## Features
 
-- Complete buy vs. rent financial analysis over 30 years
+- Complete buy vs. rent financial analysis over whatever time period you choose (defaults to 30 years)
 - Real-time input validation with visual feedback
 - 16 city presets (Washington DC, Boston, NYC, San Francisco x 4 bedroom sizes)
 - US Tax Benefits calculation (mortgage interest and property tax deductions)
-- Monte Carlo simulations for probabilistic analysis
+- Monte Carlo simulations for probabilistic analysis over the time period
 - Interactive charts showing wealth accumulation
 - Year-by-year data breakdown table
 - Responsive design with Tailwind CSS
-- Dark mode support
+- Dark mode support with a nice ristretto-monokai-esque colorway
 
 ## Tax Benefits
 
@@ -23,7 +25,7 @@ The calculator includes optional US tax benefit calculations following current t
 - **Mortgage Interest**: Fully deductible for loans up to $750,000
 - **Itemized vs Standard**: Only provides benefit when itemized deductions exceed standard deduction
 
-This accurately reflects the 2017 Tax Cuts and Jobs Act (TCJA) provisions, which significantly reduced the tax advantages of homeownership for most middle-class buyers.
+This accurately reflects the 2017 Tax Cuts and Jobs Act (TCJA) provisions, which significantly reduced the tax advantages of homeownership for many middle-class buyers.
 
 ## Prerequisites
 
@@ -56,7 +58,6 @@ Output will be in the `dist/` directory.
 ## Project Structure
 
 ```
-.
 ├── Cargo.toml                  # Dependencies and configuration
 ├── index.html                  # HTML template with Tailwind CSS
 ├── src/
@@ -86,7 +87,7 @@ Output will be in the `dist/` directory.
 
 ## Tech Stack
 
-- **Dioxus 0.7**: React-like framework for Rust
+- **Dioxus**: React-like framework for Rust
 - **WebAssembly**: Compile to WASM for browser execution
 - **Charming**: Rust charting library based on Apache EChart
 - **Tailwind CSS**: Utility-first CSS framework
@@ -101,13 +102,9 @@ cargo test
 
 ## Deployment
 
-The built application is a static site that can be deployed to:
-- GitHub Pages
-- Netlify
-- Vercel
-- Any static hosting service
+The built application is a static site that can be deployed to GitHub Pages, Netlify, Vercel or other static hosting services.
 
-Deploy the contents of the `dist/` directory.
+To do so, deploy the contents of the `dist/` directory.
 
 ### GitHub Pages
 
