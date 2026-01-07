@@ -1,6 +1,6 @@
 # Rent vs Buy Calculator
 
-A comprehensive financial calculator comparing the long-term wealth outcomes of buying vs. renting a home over 30 years, built with Rust and Dioxus for WebAssembly deployment.
+A comprehensive financial calculator comparing the long-term wealth outcomes of buying vs. renting a home over 30 years or a time period of your choice, built with Rust and Dioxus for WebAssembly deployment.
 
 ## Features
 
