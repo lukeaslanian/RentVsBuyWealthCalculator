@@ -283,7 +283,7 @@ pub fn App() -> Element {
             div { class: if dark_mode() { "mt-12 py-6 bg-monokai-bgLight border-t border-monokai-border" } else { "mt-12 py-6 bg-monokaiLight-bgDark border-t border-monokaiLight-border" },
                 div { class: if dark_mode() { "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm text-monokai-fgMuted" } else { "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm text-monokaiLight-fgMuted" },
                     p { "Built with Rust, Dioxus, and WebAssembly" }
-                    p { class: "mt-1", "2025 Luke Aslanian" }
+                    p { class: "mt-1", "&#169; 2025 Luke Aslanian" }
                 }
             }
         }
