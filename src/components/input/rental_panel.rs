@@ -1,3 +1,4 @@
+use crate::components::input::DualInputField;
 use crate::models::RentalData;
 use dioxus::prelude::*;
 
@@ -71,18 +72,36 @@ pub fn RentalInputPanel(
                     dark_mode: dark_mode,
                 }
 
-                // Rent Increase Rate
-                InputField {
-                    label: "Rent Increase Rate (%/year)",
-                    value: rental_data.read().rent_increase_rate,
-                    onchange: move |v| {
+                // Rent Increase Rate % and $
+                DualInputField {
+                    label: "Rent Increase Rate",
+                    percent_value: rental_data.read().rent_increase_rate,
+                    dollar_value: {
+                        let data = rental_data.read();
+                        data.monthly_rent * 12.0 * data.rent_increase_rate / 100.0
+                    },
+                    on_percent_change: move |v| {
                         let mut data = rental_data.write();
                         data.rent_increase_rate = v;
                     },
+                    on_dollar_change: move |dollars| {
+                        let data_read = rental_data.read();
+                        let annual_rent = data_read.monthly_rent * 12.0;
+                        if annual_rent > 0.01 {
+                            let percent = (dollars / annual_rent) * 100.0;
+                            drop(data_read);
+                            let mut data = rental_data.write();
+                            data.rent_increase_rate = percent;
+                        }
+                    },
                     tooltip: "Expected annual rent increase (e.g., 4%)",
-                    min: Some(0.0),
-                    max: Some(50.0),
-                    max_exclusive: true,
+                    show_first_year_label: true,
+                    percent_min: Some(0.0),
+                    percent_max: Some(50.0),
+                    percent_max_exclusive: true,
+                    dollar_min: Some(0.0),
+                    dollar_max: Some(rental_data.read().monthly_rent * 12.0 * 0.50),
+                    dollar_max_exclusive: true,
                     dark_mode: dark_mode,
                 }
 
@@ -138,27 +157,34 @@ pub fn RentalInputPanel(
                     // Broker Fee Percentage (only shown when enabled)
                     if rental_data.read().enable_broker_fee {
                         div { class: if dark_mode { "bg-monokai-bgLighter rounded-lg p-4 space-y-3" } else { "bg-monokaiLight-bg rounded-lg p-4 space-y-3" },
-                            InputField {
-                                label: "Broker Fee (% of annual rent)",
-                                value: rental_data.read().broker_fee_percent,
-                                onchange: move |v| {
+                            DualInputField {
+                                label: "Broker Fee",
+                                percent_value: rental_data.read().broker_fee_percent,
+                                dollar_value: {
+                                    let data = rental_data.read();
+                                    data.monthly_rent * 12.0 * data.broker_fee_percent / 100.0
+                                },
+                                on_percent_change: move |v| {
                                     let mut data = rental_data.write();
                                     data.broker_fee_percent = v;
                                 },
-                                tooltip: "Broker's fee as percentage of annual rent (e.g., 15%)",
-                                min: Some(0.0),
-                                max: Some(100.0),
-                                dark_mode: dark_mode,
-                            }
-
-                            // Show calculated broker fee amount
-                            {
-                                let fee = rental_data.read().broker_fee_amount();
-                                rsx! {
-                                    div { class: if dark_mode { "text-xs text-monokai-fgMuted" } else { "text-xs text-monokaiLight-fgMuted" },
-                                        "Broker fee amount: ${fee:.0}"
+                                on_dollar_change: move |dollars| {
+                                    let data_read = rental_data.read();
+                                    let annual_rent = data_read.monthly_rent * 12.0;
+                                    if annual_rent > 0.01 {
+                                        let percent = (dollars / annual_rent) * 100.0;
+                                        drop(data_read);
+                                        let mut data = rental_data.write();
+                                        data.broker_fee_percent = percent;
                                     }
-                                }
+                                },
+                                tooltip: "Broker's fee as percentage of annual rent (e.g., 15%)",
+                                show_first_year_label: false,
+                                percent_min: Some(0.0),
+                                percent_max: Some(100.0),
+                                dollar_min: Some(0.0),
+                                dollar_max: Some(rental_data.read().monthly_rent * 12.0),
+                                dark_mode: dark_mode,
                             }
                         }
                     }

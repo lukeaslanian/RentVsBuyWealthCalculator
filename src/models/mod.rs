@@ -7,5 +7,8 @@ mod rental_data;
 pub use city_preset::CityPreset;
 pub use financial_results::FinancialResults;
 pub use investment_params::InvestmentParameters;
-pub use property_data::{FilingStatus, PropertyData};
+pub use property_data::{
+    default_interest_rate, default_interest_rate_date, is_default_rate_from_fred, FilingStatus,
+    PropertyData,
+};
 pub use rental_data::RentalData;

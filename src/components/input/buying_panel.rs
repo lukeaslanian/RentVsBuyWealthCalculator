@@ -1,3 +1,5 @@
+use crate::calculators::MortgageCalculator;
+use crate::components::input::DualInputField;
 use crate::models::{FilingStatus, PropertyData};
 use crate::utils::fetch_current_mortgage_rate;
 use dioxus::prelude::*;
@@ -33,17 +35,34 @@ pub fn BuyingInputPanel(
                     dark_mode: dark_mode,
                 }
 
-                // Down Payment %
-                InputField {
-                    label: "Down Payment (%)",
-                    value: property_data.read().down_payment_percent,
-                    onchange: move |v| {
+                // Down Payment % and $
+                DualInputField {
+                    label: "Down Payment",
+                    percent_value: property_data.read().down_payment_percent,
+                    dollar_value: {
+                        let data = property_data.read();
+                        data.home_price * data.down_payment_percent / 100.0
+                    },
+                    on_percent_change: move |v| {
                         let mut data = property_data.write();
                         data.down_payment_percent = v;
                     },
+                    on_dollar_change: move |dollars| {
+                        let data_read = property_data.read();
+                        let home_price = data_read.home_price;
+                        if home_price > 0.01 {
+                            let percent = (dollars / home_price) * 100.0;
+                            drop(data_read);
+                            let mut data = property_data.write();
+                            data.down_payment_percent = percent;
+                        }
+                    },
                     tooltip: "Percentage of home price paid upfront (e.g., 3% or 20%)",
-                    min: Some(0.0),
-                    max: Some(100.0),
+                    show_first_year_label: false,
+                    percent_min: Some(0.0),
+                    percent_max: Some(100.0),
+                    dollar_min: Some(0.0),
+                    dollar_max: Some(property_data.read().home_price),
                     dark_mode: dark_mode,
                 }
 
@@ -53,18 +72,36 @@ pub fn BuyingInputPanel(
                     dark_mode: dark_mode,
                 }
 
-                // Property Tax
-                InputField {
-                    label: "Property Tax (%/year)",
-                    value: property_data.read().property_tax_rate,
-                    onchange: move |v| {
+                // Property Tax % and $
+                DualInputField {
+                    label: "Property Tax",
+                    percent_value: property_data.read().property_tax_rate,
+                    dollar_value: {
+                        let data = property_data.read();
+                        data.home_price * data.property_tax_rate / 100.0
+                    },
+                    on_percent_change: move |v| {
                         let mut data = property_data.write();
                         data.property_tax_rate = v;
                     },
+                    on_dollar_change: move |dollars| {
+                        let data_read = property_data.read();
+                        let home_price = data_read.home_price;
+                        if home_price > 0.01 {
+                            let percent = (dollars / home_price) * 100.0;
+                            drop(data_read);
+                            let mut data = property_data.write();
+                            data.property_tax_rate = percent;
+                        }
+                    },
                     tooltip: "Annual property tax as percentage of home value",
-                    min: Some(0.0),
-                    max: Some(10.0),
-                    max_exclusive: true,
+                    show_first_year_label: true,
+                    percent_min: Some(0.0),
+                    percent_max: Some(10.0),
+                    percent_max_exclusive: true,
+                    dollar_min: Some(0.0),
+                    dollar_max: Some(property_data.read().home_price * 0.10),
+                    dollar_max_exclusive: true,
                     dark_mode: dark_mode,
                 }
 
@@ -81,18 +118,36 @@ pub fn BuyingInputPanel(
                     dark_mode: dark_mode,
                 }
 
-                // Maintenance
-                InputField {
-                    label: "Maintenance (%/year)",
-                    value: property_data.read().maintenance_percent,
-                    onchange: move |v| {
+                // Maintenance % and $
+                DualInputField {
+                    label: "Maintenance",
+                    percent_value: property_data.read().maintenance_percent,
+                    dollar_value: {
+                        let data = property_data.read();
+                        data.home_price * data.maintenance_percent / 100.0
+                    },
+                    on_percent_change: move |v| {
                         let mut data = property_data.write();
                         data.maintenance_percent = v;
                     },
+                    on_dollar_change: move |dollars| {
+                        let data_read = property_data.read();
+                        let home_price = data_read.home_price;
+                        if home_price > 0.01 {
+                            let percent = (dollars / home_price) * 100.0;
+                            drop(data_read);
+                            let mut data = property_data.write();
+                            data.maintenance_percent = percent;
+                        }
+                    },
                     tooltip: "Annual maintenance cost as percentage of home value (typically 1%)",
-                    min: Some(0.0),
-                    max: Some(10.0),
-                    max_exclusive: true,
+                    show_first_year_label: true,
+                    percent_min: Some(0.0),
+                    percent_max: Some(10.0),
+                    percent_max_exclusive: true,
+                    dollar_min: Some(0.0),
+                    dollar_max: Some(property_data.read().home_price * 0.10),
+                    dollar_max_exclusive: true,
                     dark_mode: dark_mode,
                 }
 
@@ -109,18 +164,36 @@ pub fn BuyingInputPanel(
                     dark_mode: dark_mode,
                 }
 
-                // HOA Fee Increase
-                InputField {
-                    label: "HOA Fee Increase (%/yr)",
-                    value: property_data.read().hoa_fee_increase_rate,
-                    onchange: move |v| {
+                // HOA Fee Increase % and $
+                DualInputField {
+                    label: "HOA Fee Increase",
+                    percent_value: property_data.read().hoa_fee_increase_rate,
+                    dollar_value: {
+                        let data = property_data.read();
+                        data.hoa_fee * data.hoa_fee_increase_rate / 100.0
+                    },
+                    on_percent_change: move |v| {
                         let mut data = property_data.write();
                         data.hoa_fee_increase_rate = v;
                     },
+                    on_dollar_change: move |dollars| {
+                        let data_read = property_data.read();
+                        let hoa_fee = data_read.hoa_fee;
+                        if hoa_fee > 0.01 {
+                            let percent = (dollars / hoa_fee) * 100.0;
+                            drop(data_read);
+                            let mut data = property_data.write();
+                            data.hoa_fee_increase_rate = percent;
+                        }
+                    },
                     tooltip: "Expected annual increase rate for HOA fees (typically 3%)",
-                    min: Some(0.0),
-                    max: Some(50.0),
-                    max_exclusive: true,
+                    show_first_year_label: true,
+                    percent_min: Some(0.0),
+                    percent_max: Some(50.0),
+                    percent_max_exclusive: true,
+                    dollar_min: Some(0.0),
+                    dollar_max: Some(property_data.read().hoa_fee * 0.50),
+                    dollar_max_exclusive: true,
                     dark_mode: dark_mode,
                 }
 
@@ -150,46 +223,98 @@ pub fn BuyingInputPanel(
                     dark_mode: dark_mode,
                 }
 
-                // Purchase Closing Costs
-                InputField {
-                    label: "Purchase Closing Costs (%)",
-                    value: property_data.read().closing_costs_percent_purchase,
-                    onchange: move |v| {
+                // Purchase Closing Costs % and $
+                DualInputField {
+                    label: "Purchase Closing Costs",
+                    percent_value: property_data.read().closing_costs_percent_purchase,
+                    dollar_value: {
+                        let data = property_data.read();
+                        data.home_price * data.closing_costs_percent_purchase / 100.0
+                    },
+                    on_percent_change: move |v| {
                         let mut data = property_data.write();
                         data.closing_costs_percent_purchase = v;
                     },
+                    on_dollar_change: move |dollars| {
+                        let data_read = property_data.read();
+                        let home_price = data_read.home_price;
+                        if home_price > 0.01 {
+                            let percent = (dollars / home_price) * 100.0;
+                            drop(data_read);
+                            let mut data = property_data.write();
+                            data.closing_costs_percent_purchase = percent;
+                        }
+                    },
                     tooltip: "Closing costs at purchase as percentage of home price (typically 3-5%)",
-                    min: Some(0.0),
-                    max: Some(20.0),
+                    show_first_year_label: false,
+                    percent_min: Some(0.0),
+                    percent_max: Some(20.0),
+                    dollar_min: Some(0.0),
+                    dollar_max: Some(property_data.read().home_price * 0.20),
                     dark_mode: dark_mode,
                 }
 
-                // Sale Closing Costs
-                InputField {
-                    label: "Sale Closing Costs (%)",
-                    value: property_data.read().closing_costs_percent_sale,
-                    onchange: move |v| {
+                // Sale Closing Costs % and $
+                DualInputField {
+                    label: "Sale Closing Costs",
+                    percent_value: property_data.read().closing_costs_percent_sale,
+                    dollar_value: {
+                        let data = property_data.read();
+                        data.home_price * data.closing_costs_percent_sale / 100.0
+                    },
+                    on_percent_change: move |v| {
                         let mut data = property_data.write();
                         data.closing_costs_percent_sale = v;
                     },
+                    on_dollar_change: move |dollars| {
+                        let data_read = property_data.read();
+                        let home_price = data_read.home_price;
+                        if home_price > 0.01 {
+                            let percent = (dollars / home_price) * 100.0;
+                            drop(data_read);
+                            let mut data = property_data.write();
+                            data.closing_costs_percent_sale = percent;
+                        }
+                    },
                     tooltip: "Closing costs when selling as percentage of sale price (typically 6%)",
-                    min: Some(0.0),
-                    max: Some(20.0),
+                    show_first_year_label: false,
+                    percent_min: Some(0.0),
+                    percent_max: Some(20.0),
+                    dollar_min: Some(0.0),
+                    dollar_max: Some(property_data.read().home_price * 0.20),
                     dark_mode: dark_mode,
                 }
 
-                // Home Appreciation Rate
-                InputField {
-                    label: "Appreciation Rate (%/year)",
-                    value: property_data.read().home_appreciation_rate,
-                    onchange: move |v| {
+                // Home Appreciation Rate % and $
+                DualInputField {
+                    label: "Home Appreciation Rate",
+                    percent_value: property_data.read().home_appreciation_rate,
+                    dollar_value: {
+                        let data = property_data.read();
+                        data.home_price * data.home_appreciation_rate / 100.0
+                    },
+                    on_percent_change: move |v| {
                         let mut data = property_data.write();
                         data.home_appreciation_rate = v;
                     },
+                    on_dollar_change: move |dollars| {
+                        let data_read = property_data.read();
+                        let home_price = data_read.home_price;
+                        if home_price > 0.01 {
+                            let percent = (dollars / home_price) * 100.0;
+                            drop(data_read);
+                            let mut data = property_data.write();
+                            data.home_appreciation_rate = percent;
+                        }
+                    },
                     tooltip: "Expected annual home value appreciation rate",
-                    min: Some(-10.0),
-                    max: Some(50.0),
-                    max_exclusive: true,
+                    show_first_year_label: true,
+                    percent_min: Some(-10.0),
+                    percent_max: Some(50.0),
+                    percent_max_exclusive: true,
+                    dollar_min: Some(-property_data.read().home_price * 0.10),
+                    dollar_max: Some(property_data.read().home_price * 0.50),
+                    dollar_max_exclusive: true,
                     dark_mode: dark_mode,
                 }
             }
@@ -270,17 +395,39 @@ pub fn BuyingInputPanel(
                             }
                         }
 
-                        // Marginal Tax Rate
-                        InputField {
-                            label: "Marginal Tax Rate (%)",
-                            value: property_data.read().marginal_tax_rate,
-                            onchange: move |v| {
+                        // Marginal Tax Rate % and estimated tax savings $
+                        DualInputField {
+                            label: "Marginal Tax Rate",
+                            percent_value: property_data.read().marginal_tax_rate,
+                            dollar_value: {
+                                let data = property_data.read();
+                                // Calculate first year mortgage interest
+                                let loan_amount = data.loan_amount();
+                                let annual_interest_rate = data.effective_interest_rate();
+                                let calculator = MortgageCalculator::new(loan_amount, annual_interest_rate, 30);
+                                let first_year_interest = calculator.calculate_interest_paid_in_year(1);
+
+                                // Calculate tax savings
+                                data.calculate_annual_tax_savings(
+                                    first_year_interest,
+                                    data.home_price,
+                                    data.hoa_fee * 12.0,
+                                )
+                            },
+                            on_percent_change: move |v| {
                                 let mut data = property_data.write();
                                 data.marginal_tax_rate = v;
                             },
+                            on_dollar_change: move |_| {
+                                // Dollar input is read-only, no action needed
+                            },
                             tooltip: "Your marginal federal income tax rate (the rate on your last dollar of income)",
-                            min: Some(0.0),
-                            max: Some(50.0),
+                            dollar_label: Some("Estimated first year tax savings".to_string()),
+                            percent_min: Some(0.0),
+                            percent_max: Some(50.0),
+                            dollar_min: Some(0.0),
+                            dollar_max: Some(50000.0),
+                            disable_dollar_input: true,
                             dark_mode: dark_mode,
                         }
 
@@ -297,18 +444,40 @@ pub fn BuyingInputPanel(
                             dark_mode: dark_mode,
                         }
 
-                        // HOA/Common Fees Deduction
-                        InputField {
-                            label: "HOA Fees Deduction (%)",
-                            value: property_data.read().hoa_deduction_percent,
-                            onchange: move |v| {
-                                let mut data = property_data.write();
-                                data.hoa_deduction_percent = v;
-                            },
-                            tooltip: "Percentage of HOA fees that are tax deductible (usually 0% for primary residence, may be higher for home office)",
-                            min: Some(0.0),
-                            max: Some(100.0),
-                            dark_mode: dark_mode,
+                        // HOA/Common Fees Deduction % and $
+                        div { class: "space-y-1",
+                            DualInputField {
+                                label: "HOA Fees Deduction",
+                                percent_value: property_data.read().hoa_deduction_percent,
+                                dollar_value: {
+                                    let data = property_data.read();
+                                    data.hoa_fee * 12.0 * data.hoa_deduction_percent / 100.0
+                                },
+                                on_percent_change: move |v| {
+                                    let mut data = property_data.write();
+                                    data.hoa_deduction_percent = v;
+                                },
+                                on_dollar_change: move |dollars| {
+                                    let data_read = property_data.read();
+                                    let annual_hoa_fees = data_read.hoa_fee * 12.0;
+                                    if annual_hoa_fees > 0.01 {
+                                        let percent = (dollars / annual_hoa_fees) * 100.0;
+                                        drop(data_read);
+                                        let mut data = property_data.write();
+                                        data.hoa_deduction_percent = percent;
+                                    }
+                                },
+                                tooltip: "Percentage of HOA fees that are tax deductible",
+                                show_first_year_label: true,
+                                percent_min: Some(0.0),
+                                percent_max: Some(100.0),
+                                dollar_min: Some(0.0),
+                                dollar_max: Some(property_data.read().hoa_fee * 12.0),
+                                dark_mode: dark_mode,
+                            }
+                            p { class: if dark_mode { "text-xs text-monokai-fgDim italic mt-1" } else { "text-xs text-monokaiLight-fgDim italic mt-1" },
+                                "Note: HOA fees are typically NOT deductible for primary residences. Only adjust if you have a home office."
+                            }
                         }
 
                         // Info about SALT cap
@@ -320,6 +489,31 @@ pub fn BuyingInputPanel(
             }
         }
     }
+}
+
+/// Format a number as currency with commas and 2 decimal places
+fn format_currency_input(value: f64) -> String {
+    let abs_value = value.abs();
+    let integer_part = abs_value.floor() as u64;
+    let decimal_part = ((abs_value - integer_part as f64) * 100.0).round() as u64;
+
+    // Format integer part with commas
+    let integer_str = integer_part.to_string();
+    let mut formatted = String::new();
+    let chars: Vec<char> = integer_str.chars().rev().collect();
+
+    for (i, ch) in chars.iter().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            formatted.push(',');
+        }
+        formatted.push(*ch);
+    }
+
+    let formatted_integer: String = formatted.chars().rev().collect();
+
+    // Add sign and dollar sign
+    let sign = if value < 0.0 { "-" } else { "" };
+    format!("{}${}.{:02}", sign, formatted_integer, decimal_part)
 }
 
 #[component]
@@ -334,6 +528,7 @@ fn InputField(
     #[props(default = false)] max_exclusive: bool,
     #[props(default = false)] dark_mode: bool,
 ) -> Element {
+    let mut is_focused = use_signal(|| false);
     // Validate the value
     let is_valid = {
         let mut valid = true;
@@ -389,7 +584,7 @@ fn InputField(
                 "{label}"
             }
             input {
-                r#type: "number",
+                r#type: if is_focused() { "number" } else { "text" },
                 class: if dark_mode {
                     if is_valid {
                         "w-full px-3 py-2 border border-monokai-border bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-blue focus:border-monokai-blue"
@@ -403,10 +598,22 @@ fn InputField(
                         "w-full px-3 py-2 border border-monokaiLight-red bg-monokaiLight-bg text-monokaiLight-fg rounded-md shadow-sm focus:ring-monokaiLight-red focus:border-monokaiLight-red"
                     }
                 },
-                value: "{value}",
+                value: if is_focused() {
+                    format!("{:.2}", value)
+                } else {
+                    format_currency_input(value)
+                },
                 step: "0.01",
+                onfocus: move |_| {
+                    is_focused.set(true);
+                },
+                onblur: move |_| {
+                    is_focused.set(false);
+                },
                 oninput: move |evt| {
-                    if let Ok(v) = evt.value().parse::<f64>() {
+                    // Remove any formatting characters for parsing
+                    let clean_value = evt.value().replace(",", "").replace("$", "").trim().to_string();
+                    if let Ok(v) = clean_value.parse::<f64>() {
                         onchange.call(v);
                     }
                 },
@@ -433,6 +640,21 @@ fn InterestRateField(
     let mut is_fetching = use_signal(|| false);
     let mut rate_info = use_signal(|| None::<String>);
 
+    // Set initial rate info based on build-time data
+    use_effect(move || {
+        if rate_info.read().is_none() {
+            if crate::models::is_default_rate_from_fred() {
+                if let Some(date) = crate::models::default_interest_rate_date() {
+                    let rate = crate::models::default_interest_rate();
+                    rate_info.set(Some(format!(
+                        "Build-time rate: {:.2}% (as of {}). Click 'Live Rate' to fetch current rates.",
+                        rate, date
+                    )));
+                }
+            }
+        }
+    });
+
     let fetch_rate = move |_| {
         spawn(async move {
             is_fetching.set(true);
@@ -458,6 +680,7 @@ fn InterestRateField(
 
     let value = property_data.read().interest_rate;
     let is_valid = value > 0.0 && value < 20.0;
+    let mut is_focused = use_signal(|| false);
 
     rsx! {
         div {
@@ -466,7 +689,7 @@ fn InterestRateField(
             }
             div { class: "flex gap-2",
                 input {
-                    r#type: "number",
+                    r#type: if is_focused() { "number" } else { "text" },
                     class: if dark_mode {
                         if is_valid {
                             "flex-1 px-3 py-2 border border-monokai-border bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-blue focus:border-monokai-blue"
@@ -480,10 +703,21 @@ fn InterestRateField(
                             "flex-1 px-3 py-2 border border-monokaiLight-red bg-monokaiLight-bg text-monokaiLight-fg rounded-md shadow-sm focus:ring-monokaiLight-red focus:border-monokaiLight-red"
                         }
                     },
-                    value: "{value}",
+                    value: if is_focused() {
+                        format!("{:.2}", value)
+                    } else {
+                        format!("{:.2}%", value)
+                    },
                     step: "0.01",
+                    onfocus: move |_| {
+                        is_focused.set(true);
+                    },
+                    onblur: move |_| {
+                        is_focused.set(false);
+                    },
                     oninput: move |evt| {
-                        if let Ok(v) = evt.value().parse::<f64>() {
+                        let clean_value = evt.value().replace("%", "").trim().to_string();
+                        if let Ok(v) = clean_value.parse::<f64>() {
                             let mut data = property_data.write();
                             data.interest_rate = v;
                         }

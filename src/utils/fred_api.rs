@@ -1,11 +1,23 @@
 use gloo_net::http::Request;
 use serde::Deserialize;
 
-const FRED_API_KEY: &str = "ea90fe3709c9c7eae3dbe45bce2a2788";
+// NOTE: FRED API key should be set at compile time via environment variable for production
+// For client-side fetching, the key will be visible in the compiled WASM
+// This is acceptable for FRED API as it's free, read-only, and public
+// Get your own free API key at: https://fred.stlouisfed.org/docs/api/api_key.html
 const FRED_BASE_URL: &str = "https://api.stlouisfed.org/fred/series/observations";
 // Use corsproxy.io to bypass CORS restrictions
 const CORS_PROXY: &str = "https://corsproxy.io/?";
 const FALLBACK_RATE: f64 = 5.99;
+// Development fallback API key (FRED API is free and read-only)
+const DEV_API_KEY: &str = "ea90fe3709c9c7eae3dbe45bce2a2788";
+
+fn get_fred_api_key() -> &'static str {
+    match option_env!("FRED_API_KEY") {
+        Some(key) if !key.is_empty() => key,
+        _ => DEV_API_KEY,
+    }
+}
 
 #[derive(Debug, Deserialize)]
 struct FredResponse {
@@ -56,9 +68,17 @@ pub async fn fetch_current_mortgage_rate() -> MortgageRateResult {
 }
 
 async fn fetch_rate_from_fred() -> Result<MortgageRateResult, String> {
+    let api_key = get_fred_api_key();
+    if api_key.is_empty() {
+        return Err(
+            "No FRED API key available. Set FRED_API_KEY environment variable at build time."
+                .to_string(),
+        );
+    }
+
     let fred_url = format!(
         "{}?series_id=MORTGAGE30US&api_key={}&file_type=json&sort_order=desc&limit=1",
-        FRED_BASE_URL, FRED_API_KEY
+        FRED_BASE_URL, api_key
     );
     // Wrap with CORS proxy - URL encode the target URL
     let encoded_url = fred_url

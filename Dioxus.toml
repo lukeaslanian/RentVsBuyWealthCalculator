@@ -16,13 +16,13 @@ level = "4"
 title = "To Buy Or Not To Buy - Rent vs Buy Calculator"
 
 # Base path for GitHub Pages deployment (repo name)
-base_path = "RentVsBuyWealthCalculator"
+# base_path = "RentVsBuyWealthCalculator"
 
 [web.watcher]
 
 index_on_404 = true
 
-watch_path = ["src", "examples"]
+watch_path = ["src"]
 
 [bundle]
 # Bundle identifier

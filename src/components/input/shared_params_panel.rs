@@ -10,6 +10,9 @@ pub fn SharedParamsPanel(
     let years = investment_params.read().analysis_years;
     let inflation_rate = investment_params.read().inflation_rate;
 
+    let mut return_rate_focused = use_signal(|| false);
+    let mut inflation_focused = use_signal(|| false);
+
     // Validate return rate (reasonable range: -50% to 50%)
     let return_rate_valid = return_rate >= -50.0 && return_rate < 50.0;
 
@@ -35,7 +38,7 @@ pub fn SharedParamsPanel(
                         "Investment Return Rate (%/year)"
                     }
                     input {
-                        r#type: "number",
+                        r#type: if return_rate_focused() { "number" } else { "text" },
                         class: if dark_mode {
                             if return_rate_valid {
                                 "w-full px-3 py-2 border border-monokai-border bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-blue focus:border-monokai-blue"
@@ -49,10 +52,21 @@ pub fn SharedParamsPanel(
                                 "w-full px-3 py-2 border border-monokaiLight-red bg-monokaiLight-bg text-monokaiLight-fg rounded-md shadow-sm focus:ring-monokaiLight-red focus:border-monokaiLight-red"
                             }
                         },
-                        value: "{return_rate}",
+                        value: if return_rate_focused() {
+                            format!("{:.2}", return_rate)
+                        } else {
+                            format!("{:.2}%", return_rate)
+                        },
                         step: "0.1",
+                        onfocus: move |_| {
+                            return_rate_focused.set(true);
+                        },
+                        onblur: move |_| {
+                            return_rate_focused.set(false);
+                        },
                         oninput: move |evt| {
-                            if let Ok(v) = evt.value().parse::<f64>() {
+                            let clean_value = evt.value().replace("%", "").trim().to_string();
+                            if let Ok(v) = clean_value.parse::<f64>() {
                                 let mut params = investment_params.write();
                                 params.annual_return_rate = v;
                             }
@@ -118,7 +132,7 @@ pub fn SharedParamsPanel(
                         "Inflation Rate (%/year)"
                     }
                     input {
-                        r#type: "number",
+                        r#type: if inflation_focused() { "number" } else { "text" },
                         class: if dark_mode {
                             if inflation_valid {
                                 "w-full px-3 py-2 border border-monokai-border bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-blue focus:border-monokai-blue"
@@ -132,10 +146,21 @@ pub fn SharedParamsPanel(
                                 "w-full px-3 py-2 border border-monokaiLight-red bg-monokaiLight-bg text-monokaiLight-fg rounded-md shadow-sm focus:ring-monokaiLight-red focus:border-monokaiLight-red"
                             }
                         },
-                        value: "{inflation_rate}",
+                        value: if inflation_focused() {
+                            format!("{:.2}", inflation_rate)
+                        } else {
+                            format!("{:.2}%", inflation_rate)
+                        },
                         step: "0.1",
+                        onfocus: move |_| {
+                            inflation_focused.set(true);
+                        },
+                        onblur: move |_| {
+                            inflation_focused.set(false);
+                        },
                         oninput: move |evt| {
-                            if let Ok(v) = evt.value().parse::<f64>() {
+                            let clean_value = evt.value().replace("%", "").trim().to_string();
+                            if let Ok(v) = clean_value.parse::<f64>() {
                                 let mut params = investment_params.write();
                                 params.inflation_rate = v;
                             }

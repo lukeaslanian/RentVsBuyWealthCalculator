@@ -2,17 +2,17 @@ use crate::calculators::{MonteCarloSimulator, SimulationResults};
 use crate::models::{InvestmentParameters, PropertyData, RentalData};
 use crate::utils::CurrencyFormatter;
 use charming::{
-    component::{Axis, Grid, Title},
+    component::{Axis, Grid, Legend, Title},
     element::{
-        AxisLabel, AxisType, ItemStyle, LineStyle, MarkLine, MarkLineData, MarkLineVariant,
-        SplitLine, Symbol, TextStyle,
+        AxisLabel, AxisPointer, AxisPointerType, AxisType, ItemStyle, LineStyle, SplitLine, Symbol,
+        TextStyle, Tooltip, Trigger,
     },
     series::Bar,
     Chart, WasmRenderer,
 };
 use dioxus::prelude::*;
 
-/// Get the width for charts based on window size, optimized for mobile
+/// Get the width for Monte Carlo chart (single full-width chart)
 fn get_chart_width() -> u32 {
     web_sys::window()
         .and_then(|w| w.inner_width().ok())
@@ -28,7 +28,8 @@ fn get_chart_width() -> u32 {
             } else if window_width < 1024 {
                 window_width.saturating_sub(80).max(350)
             } else {
-                window_width.saturating_sub(120).min(800).max(400)
+                // Single chart - use more width but cap at reasonable max
+                window_width.saturating_sub(120).min(900).max(400)
             }
         })
         .unwrap_or(300)
@@ -510,7 +511,7 @@ fn HistogramChart(data: Vec<f64>, #[props(default = false)] dark_mode: bool) -> 
 
             div {
                 id: "monte-carlo-histogram",
-                style: "width: 100%; height: 400px;",
+                style: "width: 100%; min-height: 300px; max-height: 500px;",
                 class: if dark_mode { "rounded" } else { "border border-monokaiLight-border rounded" },
             }
         }
@@ -568,33 +569,23 @@ fn draw_histogram(data: &[f64], dark_mode: bool) {
     const MONOKAI_GRID: &str = "#524f53";
     const MONOKAI_GREEN: &str = "#a9dc76";
     const MONOKAI_RED: &str = "#ff6188";
-    const MONOKAI_PURPLE: &str = "#ab9df2";
 
     const LIGHT_BG: &str = "#ffffff";
     const LIGHT_FG: &str = "#2d2a2e";
     const LIGHT_GRID: &str = "#c8c8c8";
     const LIGHT_GREEN: &str = "#50a14f";
     const LIGHT_RED: &str = "#e45649";
-    const LIGHT_PURPLE: &str = "#a626a4";
 
-    let (bg_color, text_color, grid_color, green_color, red_color, purple_color) = if dark_mode {
+    let (bg_color, text_color, grid_color, green_color, red_color) = if dark_mode {
         (
             MONOKAI_BG,
             MONOKAI_FG,
             MONOKAI_GRID,
             MONOKAI_GREEN,
             MONOKAI_RED,
-            MONOKAI_PURPLE,
         )
     } else {
-        (
-            LIGHT_BG,
-            LIGHT_FG,
-            LIGHT_GRID,
-            LIGHT_GREEN,
-            LIGHT_RED,
-            LIGHT_PURPLE,
-        )
+        (LIGHT_BG, LIGHT_FG, LIGHT_GRID, LIGHT_GREEN, LIGHT_RED)
     };
 
     if data.is_empty() {
@@ -649,34 +640,10 @@ fn draw_histogram(data: &[f64], dark_mode: bool) {
         })
         .collect();
 
-    // Find the zero crossing index for mark line
-    let zero_index = if min < 0.0 && max > 0.0 {
-        Some(((0.0 - min) / bin_width).floor() as i32)
-    } else {
-        None
-    };
-
-    let mut positive_bar = Bar::new()
+    let positive_bar = Bar::new()
         .name("Buy Wins")
         .data(positive_data)
         .item_style(ItemStyle::new().color(green_color));
-
-    // Add mark line at zero if applicable
-    if let Some(idx) = zero_index {
-        positive_bar = positive_bar.mark_line(
-            MarkLine::new()
-                .symbol(vec![Symbol::None, Symbol::None])
-                .data(vec![MarkLineVariant::Simple(
-                    MarkLineData::new().x_axis(idx).name("$0"),
-                )])
-                .line_style(
-                    LineStyle::new()
-                        .color(purple_color)
-                        .width(2)
-                        .type_(charming::element::LineStyleType::Solid),
-                ),
-        );
-    }
 
     let negative_bar = Bar::new()
         .name("Rent Wins")
@@ -691,7 +658,18 @@ fn draw_histogram(data: &[f64], dark_mode: bool) {
                 .left("center")
                 .text_style(TextStyle::new().color(text_color).font_size(18)),
         )
-        .grid(Grid::new().left("10%").right("5%").top("15%").bottom("15%"))
+        .tooltip(
+            Tooltip::new()
+                .trigger(Trigger::Axis)
+                .axis_pointer(AxisPointer::new().type_(AxisPointerType::Shadow)),
+        )
+        .legend(
+            Legend::new()
+                .top("top")
+                .right("5%")
+                .text_style(TextStyle::new().color(text_color)),
+        )
+        .grid(Grid::new().left("8%").right("4%").top("20%").bottom("18%"))
         .x_axis(
             Axis::new()
                 .type_(AxisType::Category)
@@ -699,13 +677,21 @@ fn draw_histogram(data: &[f64], dark_mode: bool) {
                 .name("Wealth Difference (Buy - Rent)")
                 .name_location(charming::element::NameLocation::Middle)
                 .name_gap(35)
-                .axis_label(AxisLabel::new().color(text_color).interval(9).rotate(45)),
+                .name_text_style(TextStyle::new().color(text_color).font_size(14))
+                .axis_label(
+                    AxisLabel::new()
+                        .color(text_color)
+                        .interval(9)
+                        .rotate(45)
+                        .font_size(11),
+                ),
         )
         .y_axis(
             Axis::new()
                 .type_(AxisType::Value)
                 .name("Frequency")
-                .axis_label(AxisLabel::new().color(text_color))
+                .name_text_style(TextStyle::new().color(text_color).font_size(14))
+                .axis_label(AxisLabel::new().color(text_color).font_size(12))
                 .split_line(SplitLine::new().line_style(LineStyle::new().color(grid_color))),
         )
         .series(negative_bar)
@@ -713,11 +699,14 @@ fn draw_histogram(data: &[f64], dark_mode: bool) {
 
     let width = get_chart_width();
     let height = if width < 300 {
-        (width as f32 * 0.75) as u32
+        (width as f32 * 0.8).min(240.0) as u32
     } else if width < 400 {
         (width as f32 * 0.7).min(280.0) as u32
+    } else if width < 600 {
+        (width as f32 * 0.6).min(350.0) as u32
     } else {
-        (width as f32 * 0.5).min(350.0) as u32
+        // Better height for larger screens - match other charts
+        (width as f32 * 0.55).min(450.0).max(350.0) as u32
     };
 
     let renderer = WasmRenderer::new(width, height);

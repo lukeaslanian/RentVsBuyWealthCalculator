@@ -1,6 +1,23 @@
 use crate::utils::AppConfig;
 use serde::{Deserialize, Serialize};
 
+/// Get the default mortgage interest rate - fetched from FRED at build time, or fallback value
+pub fn default_interest_rate() -> f64 {
+    option_env!("DEFAULT_MORTGAGE_RATE")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(5.99)
+}
+
+/// Get the date when the default mortgage rate was fetched from FRED (if available)
+pub fn default_interest_rate_date() -> Option<&'static str> {
+    option_env!("DEFAULT_MORTGAGE_RATE_DATE")
+}
+
+/// Check if the default interest rate was fetched from FRED at build time
+pub fn is_default_rate_from_fred() -> bool {
+    option_env!("MORTGAGE_RATE_FROM_FRED").is_some()
+}
+
 /// Tax filing status for determining standard deduction
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Default)]
 pub enum FilingStatus {
@@ -65,7 +82,7 @@ impl Default for PropertyData {
             // DC 2-bedroom defaults (updated January 2026)
             home_price: 575000.0,
             down_payment_percent: 3.0,
-            interest_rate: 5.99,
+            interest_rate: default_interest_rate(),
             mortgage_points: 0.0,
             property_tax_rate: 0.835, // DC property tax rate
             home_insurance_annual: 1700.0,
@@ -81,8 +98,8 @@ impl Default for PropertyData {
             monthly_pmi: 65.0,
             pmi_drop_off_ltv: 78.0,
 
-            // Tax benefits - disabled by default
-            enable_tax_benefits: false,
+            // Tax benefits - enabled by default
+            enable_tax_benefits: true,
             filing_status: FilingStatus::Single,
             marginal_tax_rate: 22.0,
             other_itemized_deductions: 0.0,
