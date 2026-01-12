@@ -16,7 +16,7 @@ level = "4"
 title = "To Buy Or Not To Buy - Rent vs Buy Calculator"
 
 # Base path for GitHub Pages deployment (repo name)
-# base_path = "RentVsBuyWealthCalculator"
+base_path = "RentVsBuyWealthCalculator"
 
 [web.watcher]
 
