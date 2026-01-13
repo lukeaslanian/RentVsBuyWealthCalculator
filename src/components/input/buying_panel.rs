@@ -529,6 +529,8 @@ fn InputField(
     #[props(default = false)] dark_mode: bool,
 ) -> Element {
     let mut is_focused = use_signal(|| false);
+    let mut input_text = use_signal(|| String::new());
+
     // Validate the value
     let is_valid = {
         let mut valid = true;
@@ -599,23 +601,26 @@ fn InputField(
                     }
                 },
                 value: if is_focused() {
-                    format!("{:.2}", value)
+                    input_text()
                 } else {
                     format_currency_input(value)
                 },
                 inputmode: "decimal",
                 onfocus: move |_| {
                     is_focused.set(true);
+                    input_text.set(value.to_string());
                 },
                 onblur: move |_| {
                     is_focused.set(false);
-                },
-                oninput: move |evt| {
-                    // Remove any formatting characters for parsing
-                    let clean_value = evt.value().replace(",", "").replace("$", "").trim().to_string();
+                    // Parse and update on blur
+                    let clean_value = input_text().replace(",", "").replace("$", "").trim().to_string();
                     if let Ok(v) = clean_value.parse::<f64>() {
                         onchange.call(v);
                     }
+                },
+                oninput: move |evt| {
+                    // Just track what user is typing, don't update value yet
+                    input_text.set(evt.value());
                 },
                 title: "{tooltip}"
             }
@@ -639,6 +644,8 @@ fn InterestRateField(
 ) -> Element {
     let mut is_fetching = use_signal(|| false);
     let mut rate_info = use_signal(|| None::<String>);
+    let mut is_focused = use_signal(|| false);
+    let mut input_text = use_signal(|| String::new());
 
     // Set initial rate info based on build-time data
     use_effect(move || {
@@ -680,7 +687,6 @@ fn InterestRateField(
 
     let value = property_data.read().interest_rate;
     let is_valid = value > 0.0 && value < 20.0;
-    let mut is_focused = use_signal(|| false);
 
     rsx! {
         div {
@@ -704,23 +710,25 @@ fn InterestRateField(
                         }
                     },
                     value: if is_focused() {
-                        format!("{:.2}", value)
+                        input_text()
                     } else {
                         format!("{:.2}%", value)
                     },
                     inputmode: "decimal",
                     onfocus: move |_| {
                         is_focused.set(true);
+                        input_text.set(value.to_string());
                     },
                     onblur: move |_| {
                         is_focused.set(false);
-                    },
-                    oninput: move |evt| {
-                        let clean_value = evt.value().replace("%", "").trim().to_string();
+                        let clean_value = input_text().replace("%", "").trim().to_string();
                         if let Ok(v) = clean_value.parse::<f64>() {
                             let mut data = property_data.write();
                             data.interest_rate = v;
                         }
+                    },
+                    oninput: move |evt| {
+                        input_text.set(evt.value());
                     },
                     title: "Annual mortgage interest rate"
                 }

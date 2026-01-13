@@ -11,7 +11,9 @@ pub fn SharedParamsPanel(
     let inflation_rate = investment_params.read().inflation_rate;
 
     let mut return_rate_focused = use_signal(|| false);
+    let mut return_rate_text = use_signal(|| String::new());
     let mut inflation_focused = use_signal(|| false);
+    let mut inflation_text = use_signal(|| String::new());
 
     // Validate return rate (reasonable range: -50% to 50%)
     let return_rate_valid = return_rate >= -50.0 && return_rate < 50.0;
@@ -53,23 +55,25 @@ pub fn SharedParamsPanel(
                             }
                         },
                         value: if return_rate_focused() {
-                            format!("{:.2}", return_rate)
+                            return_rate_text()
                         } else {
                             format!("{:.2}%", return_rate)
                         },
                         inputmode: "decimal",
                         onfocus: move |_| {
                             return_rate_focused.set(true);
+                            return_rate_text.set(return_rate.to_string());
                         },
                         onblur: move |_| {
                             return_rate_focused.set(false);
-                        },
-                        oninput: move |evt| {
-                            let clean_value = evt.value().replace("%", "").trim().to_string();
+                            let clean_value = return_rate_text().replace("%", "").trim().to_string();
                             if let Ok(v) = clean_value.parse::<f64>() {
                                 let mut params = investment_params.write();
                                 params.annual_return_rate = v;
                             }
+                        },
+                        oninput: move |evt| {
+                            return_rate_text.set(evt.value());
                         },
                         title: "Expected annual return on investments (e.g., 7% for stock market)"
                     }
@@ -147,23 +151,25 @@ pub fn SharedParamsPanel(
                             }
                         },
                         value: if inflation_focused() {
-                            format!("{:.2}", inflation_rate)
+                            inflation_text()
                         } else {
                             format!("{:.2}%", inflation_rate)
                         },
                         inputmode: "decimal",
                         onfocus: move |_| {
                             inflation_focused.set(true);
+                            inflation_text.set(inflation_rate.to_string());
                         },
                         onblur: move |_| {
                             inflation_focused.set(false);
-                        },
-                        oninput: move |evt| {
-                            let clean_value = evt.value().replace("%", "").trim().to_string();
+                            let clean_value = inflation_text().replace("%", "").trim().to_string();
                             if let Ok(v) = clean_value.parse::<f64>() {
                                 let mut params = investment_params.write();
                                 params.inflation_rate = v;
                             }
+                        },
+                        oninput: move |evt| {
+                            inflation_text.set(evt.value());
                         },
                         title: "Expected annual inflation rate (3% is 10-year US average)"
                     }

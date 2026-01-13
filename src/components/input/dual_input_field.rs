@@ -59,7 +59,9 @@ pub fn DualInputField(
 
     // Track focus state for inputs
     let mut percent_focused = use_signal(|| false);
+    let mut percent_text = use_signal(|| String::new());
     let mut dollar_focused = use_signal(|| false);
+    let mut dollar_text = use_signal(|| String::new());
 
     rsx! {
         div { class: "space-y-1",
@@ -93,7 +95,7 @@ pub fn DualInputField(
                             }
                         },
                         value: if percent_focused() {
-                            format!("{:.2}", percent_value)
+                            percent_text()
                         } else {
                             format!("{:.2}%", percent_value)
                         },
@@ -101,16 +103,17 @@ pub fn DualInputField(
                         placeholder: "%",
                         onfocus: move |_| {
                             percent_focused.set(true);
+                            percent_text.set(percent_value.to_string());
                         },
                         onblur: move |_| {
                             percent_focused.set(false);
-                        },
-                        oninput: move |evt| {
-                            // Remove any formatting characters for parsing
-                            let clean_value = evt.value().replace("%", "").trim().to_string();
+                            let clean_value = percent_text().replace("%", "").trim().to_string();
                             if let Ok(v) = clean_value.parse::<f64>() {
                                 on_percent_change.call(v);
                             }
+                        },
+                        oninput: move |evt| {
+                            percent_text.set(evt.value());
                         },
                         title: "{tooltip}"
                     }
@@ -163,25 +166,30 @@ pub fn DualInputField(
                             }
                         },
                         value: if dollar_focused() {
-                            format!("{:.2}", dollar_value)
+                            dollar_text()
                         } else {
                             format_currency(dollar_value)
                         },
                         inputmode: "decimal",
                         placeholder: "$",
                         onfocus: move |_| {
-                            dollar_focused.set(true);
+                            if !disable_dollar_input {
+                                dollar_focused.set(true);
+                                dollar_text.set(dollar_value.to_string());
+                            }
                         },
                         onblur: move |_| {
                             dollar_focused.set(false);
-                        },
-                        oninput: move |evt| {
                             if !disable_dollar_input {
-                                // Remove any formatting characters for parsing
-                                let clean_value = evt.value().replace(",", "").replace("$", "");
+                                let clean_value = dollar_text().replace(",", "").replace("$", "");
                                 if let Ok(v) = clean_value.parse::<f64>() {
                                     on_dollar_change.call(v);
                                 }
+                            }
+                        },
+                        oninput: move |evt| {
+                            if !disable_dollar_input {
+                                dollar_text.set(evt.value());
                             }
                         },
                         title: if disable_dollar_input {

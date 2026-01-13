@@ -232,6 +232,7 @@ fn InputField(
     #[props(default = false)] dark_mode: bool,
 ) -> Element {
     let mut is_focused = use_signal(|| false);
+    let mut input_text = use_signal(|| String::new());
 
     // Validate the value
     let is_valid = {
@@ -303,23 +304,24 @@ fn InputField(
                     }
                 },
                 value: if is_focused() {
-                    format!("{:.2}", value)
+                    input_text()
                 } else {
                     format_currency_input(value)
                 },
                 inputmode: "decimal",
                 onfocus: move |_| {
                     is_focused.set(true);
+                    input_text.set(value.to_string());
                 },
                 onblur: move |_| {
                     is_focused.set(false);
-                },
-                oninput: move |evt| {
-                    // Remove any formatting characters for parsing
-                    let clean_value = evt.value().replace(",", "").replace("$", "").trim().to_string();
+                    let clean_value = input_text().replace(",", "").replace("$", "").trim().to_string();
                     if let Ok(v) = clean_value.parse::<f64>() {
                         onchange.call(v);
                     }
+                },
+                oninput: move |evt| {
+                    input_text.set(evt.value());
                 },
                 title: "{tooltip}"
             }
