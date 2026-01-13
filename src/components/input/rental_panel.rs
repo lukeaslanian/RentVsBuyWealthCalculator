@@ -194,6 +194,31 @@ pub fn RentalInputPanel(
     }
 }
 
+/// Format a number as currency with commas and 2 decimal places
+fn format_currency_input(value: f64) -> String {
+    let abs_value = value.abs();
+    let integer_part = abs_value.floor() as u64;
+    let decimal_part = ((abs_value - integer_part as f64) * 100.0).round() as u64;
+
+    // Format integer part with commas
+    let integer_str = integer_part.to_string();
+    let mut formatted = String::new();
+    let chars: Vec<char> = integer_str.chars().rev().collect();
+
+    for (i, ch) in chars.iter().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            formatted.push(',');
+        }
+        formatted.push(*ch);
+    }
+
+    let formatted_integer: String = formatted.chars().rev().collect();
+
+    // Add sign and dollar sign
+    let sign = if value < 0.0 { "-" } else { "" };
+    format!("{}${}.{:02}", sign, formatted_integer, decimal_part)
+}
+
 #[component]
 fn InputField(
     label: String,
@@ -206,6 +231,8 @@ fn InputField(
     #[props(default = false)] max_exclusive: bool,
     #[props(default = false)] dark_mode: bool,
 ) -> Element {
+    let mut is_focused = use_signal(|| false);
+
     // Validate the value
     let is_valid = {
         let mut valid = true;
@@ -261,7 +288,7 @@ fn InputField(
                 "{label}"
             }
             input {
-                r#type: "number",
+                r#type: "text",
                 class: if dark_mode {
                     if is_valid {
                         "w-full px-3 py-2 border border-monokai-border bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-blue focus:border-monokai-blue"
@@ -275,10 +302,22 @@ fn InputField(
                         "w-full px-3 py-2 border border-monokaiLight-red bg-monokaiLight-bg text-monokaiLight-fg rounded-md shadow-sm focus:ring-monokaiLight-red focus:border-monokaiLight-red"
                     }
                 },
-                value: "{value}",
-                step: "0.01",
+                value: if is_focused() {
+                    format!("{:.2}", value)
+                } else {
+                    format_currency_input(value)
+                },
+                inputmode: "decimal",
+                onfocus: move |_| {
+                    is_focused.set(true);
+                },
+                onblur: move |_| {
+                    is_focused.set(false);
+                },
                 oninput: move |evt| {
-                    if let Ok(v) = evt.value().parse::<f64>() {
+                    // Remove any formatting characters for parsing
+                    let clean_value = evt.value().replace(",", "").replace("$", "").trim().to_string();
+                    if let Ok(v) = clean_value.parse::<f64>() {
                         onchange.call(v);
                     }
                 },

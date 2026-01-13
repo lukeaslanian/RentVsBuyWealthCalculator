@@ -584,7 +584,7 @@ fn InputField(
                 "{label}"
             }
             input {
-                r#type: if is_focused() { "number" } else { "text" },
+                r#type: "text",
                 class: if dark_mode {
                     if is_valid {
                         "w-full px-3 py-2 border border-monokai-border bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-blue focus:border-monokai-blue"
@@ -603,7 +603,7 @@ fn InputField(
                 } else {
                     format_currency_input(value)
                 },
-                step: "0.01",
+                inputmode: "decimal",
                 onfocus: move |_| {
                     is_focused.set(true);
                 },
@@ -689,7 +689,7 @@ fn InterestRateField(
             }
             div { class: "flex gap-2",
                 input {
-                    r#type: if is_focused() { "number" } else { "text" },
+                    r#type: "text",
                     class: if dark_mode {
                         if is_valid {
                             "flex-1 px-3 py-2 border border-monokai-border bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-blue focus:border-monokai-blue"
@@ -708,7 +708,7 @@ fn InterestRateField(
                     } else {
                         format!("{:.2}%", value)
                     },
-                    step: "0.01",
+                    inputmode: "decimal",
                     onfocus: move |_| {
                         is_focused.set(true);
                     },

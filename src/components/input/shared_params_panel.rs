@@ -38,7 +38,7 @@ pub fn SharedParamsPanel(
                         "Investment Return Rate (%/year)"
                     }
                     input {
-                        r#type: if return_rate_focused() { "number" } else { "text" },
+                        r#type: "text",
                         class: if dark_mode {
                             if return_rate_valid {
                                 "w-full px-3 py-2 border border-monokai-border bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-blue focus:border-monokai-blue"
@@ -57,7 +57,7 @@ pub fn SharedParamsPanel(
                         } else {
                             format!("{:.2}%", return_rate)
                         },
-                        step: "0.1",
+                        inputmode: "decimal",
                         onfocus: move |_| {
                             return_rate_focused.set(true);
                         },
@@ -132,7 +132,7 @@ pub fn SharedParamsPanel(
                         "Inflation Rate (%/year)"
                     }
                     input {
-                        r#type: if inflation_focused() { "number" } else { "text" },
+                        r#type: "text",
                         class: if dark_mode {
                             if inflation_valid {
                                 "w-full px-3 py-2 border border-monokai-border bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-blue focus:border-monokai-blue"
@@ -151,7 +151,7 @@ pub fn SharedParamsPanel(
                         } else {
                             format!("{:.2}%", inflation_rate)
                         },
-                        step: "0.1",
+                        inputmode: "decimal",
                         onfocus: move |_| {
                             inflation_focused.set(true);
                         },

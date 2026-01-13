@@ -78,7 +78,7 @@ pub fn DualInputField(
                 // Percentage input
                 div { class: "sm:col-span-2",
                     input {
-                        r#type: if percent_focused() { "number" } else { "text" },
+                        r#type: "text",
                         class: if dark_mode {
                             if percent_is_valid {
                                 "w-full px-3 py-2 border border-monokai-border bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-blue focus:border-monokai-blue"
@@ -97,7 +97,7 @@ pub fn DualInputField(
                         } else {
                             format!("{:.2}%", percent_value)
                         },
-                        step: "0.01",
+                        inputmode: "decimal",
                         placeholder: "%",
                         onfocus: move |_| {
                             percent_focused.set(true);
@@ -139,7 +139,7 @@ pub fn DualInputField(
                 // Dollar input
                 div {
                     input {
-                        r#type: if dollar_focused() { "number" } else { "text" },
+                        r#type: "text",
                         disabled: disable_dollar_input,
                         class: if dark_mode {
                             if dollar_is_valid {
@@ -167,7 +167,7 @@ pub fn DualInputField(
                         } else {
                             format_currency(dollar_value)
                         },
-                        step: "0.01",
+                        inputmode: "decimal",
                         placeholder: "$",
                         onfocus: move |_| {
                             dollar_focused.set(true);
