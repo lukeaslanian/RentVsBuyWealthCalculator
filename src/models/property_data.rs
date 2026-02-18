@@ -154,9 +154,11 @@ impl PropertyData {
             + monthly_utilities
     }
 
-    /// Calculate closing costs at purchase in dollars
+    /// Calculate closing costs at purchase in dollars (net of seller assistance)
     pub fn closing_costs_purchase(&self) -> f64 {
-        self.home_price * (self.closing_costs_percent_purchase / 100.0)
+        (self.home_price * (self.closing_costs_percent_purchase / 100.0)
+            - self.seller_closing_assistance)
+            .max(0.0)
     }
 
     /// Calculate closing costs at sale in dollars

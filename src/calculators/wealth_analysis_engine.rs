@@ -108,11 +108,16 @@ impl WealthAnalysisEngine {
             // Apply monthly home appreciation
             current_home_value *= 1.0 + monthly_appreciation_rate;
 
+            // Remaining balance must be computed before ownership costs so PMI drop-off can be applied
+            let month_index = month - 1;
+            let remaining_balance = mortgage_calc.calculate_remaining_balance(month);
+
             // Calculate this month's costs for both scenarios
             let ownership_costs = self.calculate_monthly_ownership_costs(
                 current_home_value,
                 year,
                 results.monthly_mortgage_payment,
+                remaining_balance,
             );
             let rental_costs = self.calculate_monthly_rental_costs(year);
 
@@ -129,8 +134,6 @@ impl WealthAnalysisEngine {
             );
 
             // Store monthly data for charts (0-indexed)
-            let month_index = month - 1;
-            let remaining_balance = mortgage_calc.calculate_remaining_balance(month);
             let equity = current_home_value - remaining_balance;
             let selling_costs =
                 current_home_value * (self.property_data.closing_costs_percent_sale / 100.0);
@@ -195,6 +198,7 @@ impl WealthAnalysisEngine {
         current_home_value: f64,
         year: usize,
         monthly_mortgage: f64,
+        remaining_balance: f64,
     ) -> f64 {
         // Get inflation multiplier for this year
         let inflation_mult = self.investment_params.inflation_multiplier(year);
@@ -216,12 +220,27 @@ impl WealthAnalysisEngine {
         // Utilities grow with inflation
         let utilities = self.property_data.non_included_utilities * inflation_mult;
 
+        // PMI: charged until LTV (based on original purchase price) drops to pmi_drop_off_ltv.
+        // Only applies when a monthly_pmi amount has been entered.
+        let pmi = if self.property_data.monthly_pmi > 0.0 {
+            let ltv =
+                remaining_balance / self.property_data.home_price * 100.0;
+            if ltv > self.property_data.pmi_drop_off_ltv {
+                self.property_data.monthly_pmi
+            } else {
+                0.0
+            }
+        } else {
+            0.0
+        };
+
         monthly_mortgage
             + monthly_property_tax
             + monthly_insurance
             + monthly_maintenance
             + current_hoa_fee
             + utilities
+            + pmi
     }
 
     fn calculate_monthly_rental_costs(&self, year: usize) -> f64 {

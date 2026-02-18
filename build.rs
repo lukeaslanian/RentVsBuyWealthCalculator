@@ -13,9 +13,8 @@ struct FredObservation {
 }
 
 fn fetch_current_mortgage_rate() -> Option<(f64, String)> {
-    // FRED API key can be set via environment variable
-    // Get a free API key at https://fred.stlouisfed.org/docs/api/api_key.html
-    let api_key = env::var("FRED_API_KEY").ok()?;
+    let api_key = env::var("FRED_API_KEY")
+        .unwrap_or_else(|_| "ea90fe3709c9c7eae3dbe45bce2a2788".to_string());
 
     let url = format!(
         "https://api.stlouisfed.org/fred/series/observations?series_id=MORTGAGE30US&api_key={}&file_type=json&limit=1&sort_order=desc",

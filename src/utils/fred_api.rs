@@ -6,17 +6,26 @@ use serde::Deserialize;
 // This is acceptable for FRED API as it's free, read-only, and public
 // Get your own free API key at: https://fred.stlouisfed.org/docs/api/api_key.html
 const FRED_BASE_URL: &str = "https://api.stlouisfed.org/fred/series/observations";
-// Use corsproxy.io to bypass CORS restrictions
-const CORS_PROXY: &str = "https://corsproxy.io/?";
 const FALLBACK_RATE: f64 = 5.99;
 // Development fallback API key (FRED API is free and read-only)
-const DEV_API_KEY: &str = "ea90fe3709c9c7eae3dbe45bce2a2788";
+const FRED_API_KEY: &str = "ea90fe3709c9c7eae3dbe45bce2a2788";
 
 fn get_fred_api_key() -> &'static str {
-    match option_env!("FRED_API_KEY") {
-        Some(key) if !key.is_empty() => key,
-        _ => DEV_API_KEY,
+    FRED_API_KEY
+}
+
+/// Percent-encode all non-unreserved characters for use as a query parameter value
+fn percent_encode(s: &str) -> String {
+    let mut encoded = String::new();
+    for byte in s.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(byte as char);
+            }
+            _ => encoded.push_str(&format!("%{:02X}", byte)),
+        }
     }
+    encoded
 }
 
 #[derive(Debug, Deserialize)]
@@ -67,61 +76,45 @@ pub async fn fetch_current_mortgage_rate() -> MortgageRateResult {
     }
 }
 
-async fn fetch_rate_from_fred() -> Result<MortgageRateResult, String> {
-    let api_key = get_fred_api_key();
-    if api_key.is_empty() {
-        return Err(
-            "No FRED API key available. Set FRED_API_KEY environment variable at build time."
-                .to_string(),
-        );
-    }
-
-    let fred_url = format!(
-        "{}?series_id=MORTGAGE30US&api_key={}&file_type=json&sort_order=desc&limit=1",
-        FRED_BASE_URL, api_key
-    );
-    // Wrap with CORS proxy - URL encode the target URL
-    let encoded_url = fred_url
-        .replace("%", "%25")
-        .replace("&", "%26")
-        .replace("?", "%3F")
-        .replace("=", "%3D");
-    let url = format!("{}{}", CORS_PROXY, encoded_url);
-
-    web_sys::console::log_1(&format!("FRED API: Fetching from URL: {}", url).into());
-
-    let response = Request::get(&url).send().await.map_err(|e| {
-        let msg = format!("Network error: {}", e);
-        web_sys::console::log_1(&format!("FRED API: {}", msg).into());
-        msg
-    })?;
+async fn try_fetch_text(url: &str) -> Result<String, String> {
+    let response = Request::get(url)
+        .send()
+        .await
+        .map_err(|e| format!("Network error: {}", e))?;
 
     web_sys::console::log_1(&format!("FRED API: Response status: {}", response.status()).into());
 
     if !response.ok() {
-        let msg = format!("API error: status {}", response.status());
-        web_sys::console::log_1(&format!("FRED API: {}", msg).into());
-        return Err(msg);
+        return Err(format!("HTTP error: status {}", response.status()));
     }
 
-    let text = response
+    response
         .text()
         .await
-        .map_err(|e| format!("Text error: {}", e))?;
+        .map_err(|e| format!("Text error: {}", e))
+}
+
+fn parse_fred_response(text: &str) -> Result<MortgageRateResult, String> {
     web_sys::console::log_1(
-        &format!("FRED API: Response body: {}", &text[..text.len().min(500)]).into(),
+        &format!(
+            "FRED API: Response body: {}",
+            &text[..text.len().min(500)]
+        )
+        .into(),
     );
 
-    let fred_response: FredResponse = serde_json::from_str(&text).map_err(|e| {
-        let msg = format!("Parse error: {}", e);
-        web_sys::console::log_1(&format!("FRED API: {}", msg).into());
-        msg
+    let fred_response: FredResponse = serde_json::from_str(text).map_err(|e| {
+        format!(
+            "Parse error: {}. Body: {}",
+            e,
+            &text[..text.len().min(200)]
+        )
     })?;
 
     let observation = fred_response
         .observations
         .first()
-        .ok_or_else(|| "No data available".to_string())?;
+        .ok_or_else(|| "No observations in response".to_string())?;
 
     web_sys::console::log_1(
         &format!(
@@ -135,7 +128,7 @@ async fn fetch_rate_from_fred() -> Result<MortgageRateResult, String> {
     let rate = observation
         .value
         .parse::<f64>()
-        .map_err(|_| "Invalid rate value".to_string())?;
+        .map_err(|_| format!("Invalid rate value: '{}'", observation.value))?;
 
     Ok(MortgageRateResult {
         rate,
@@ -143,4 +136,55 @@ async fn fetch_rate_from_fred() -> Result<MortgageRateResult, String> {
         is_live: true,
         error_msg: None,
     })
+}
+
+async fn fetch_rate_from_fred() -> Result<MortgageRateResult, String> {
+    let api_key = get_fred_api_key();
+    if api_key.is_empty() {
+        return Err(
+            "No FRED API key available. Set FRED_API_KEY environment variable at build time."
+                .to_string(),
+        );
+    }
+
+    let fred_url = format!(
+        "{}?series_id=MORTGAGE30US&api_key={}&file_type=json&sort_order=desc&limit=1",
+        FRED_BASE_URL, api_key
+    );
+
+    // Fully percent-encode the target URL so it can be safely passed as a query param
+    let encoded_url = percent_encode(&fred_url);
+
+    // Try multiple CORS proxies in order
+    let proxy_urls = [
+        format!("https://api.allorigins.win/raw?url={}", encoded_url),
+        format!("https://corsproxy.io/?url={}", encoded_url),
+        format!("https://corsproxy.io/?{}", encoded_url),
+    ];
+
+    let mut last_error = String::from("No proxies attempted");
+
+    for proxy_url in &proxy_urls {
+        web_sys::console::log_1(&format!("FRED API: Trying: {}", proxy_url).into());
+
+        match try_fetch_text(proxy_url).await {
+            Ok(text) => match parse_fred_response(&text) {
+                Ok(result) => return Ok(result),
+                Err(e) => {
+                    web_sys::console::log_1(
+                        &format!("FRED API: Parse failed for this proxy: {}", e).into(),
+                    );
+                    last_error = e;
+                }
+            },
+            Err(e) => {
+                web_sys::console::log_1(
+                    &format!("FRED API: Fetch failed for this proxy: {}", e).into(),
+                );
+                last_error = e;
+            }
+        }
+    }
+
+    Err(last_error)
 }

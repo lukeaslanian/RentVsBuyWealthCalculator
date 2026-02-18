@@ -210,6 +210,22 @@ pub fn BuyingInputPanel(
                     dark_mode: dark_mode,
                 }
 
+                // PMI drop-off LTV threshold (only shown when PMI > 0)
+                if property_data.read().monthly_pmi > 0.0 {
+                    InputField {
+                        label: "PMI Drop-off LTV (%)",
+                        value: property_data.read().pmi_drop_off_ltv,
+                        onchange: move |v| {
+                            let mut data = property_data.write();
+                            data.pmi_drop_off_ltv = v;
+                        },
+                        tooltip: "Loan-to-value ratio at which PMI is cancelled. Lenders must automatically cancel at 78% of original purchase price (per federal law); you can request cancellation at 80%.",
+                        min: Some(0.0),
+                        max: Some(100.0),
+                        dark_mode: dark_mode,
+                    }
+                }
+
                 // Non-included Utilities
                 InputField {
                     label: "Non-Included Utilities ($/mo)",
