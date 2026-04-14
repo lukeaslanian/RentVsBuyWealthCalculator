@@ -111,13 +111,15 @@ impl WealthAnalysisEngine {
             // Remaining balance must be computed before ownership costs so PMI drop-off can be applied
             let month_index = month - 1;
             let remaining_balance = mortgage_calc.calculate_remaining_balance(month);
+            // PMI eligibility is based on LTV at the START of the month (before this payment is made)
+            let pre_payment_balance = mortgage_calc.calculate_remaining_balance(month - 1);
 
             // Calculate this month's costs for both scenarios
             let ownership_costs = self.calculate_monthly_ownership_costs(
                 current_home_value,
                 year,
                 results.monthly_mortgage_payment,
-                remaining_balance,
+                pre_payment_balance,
             );
             let rental_costs = self.calculate_monthly_rental_costs(year);
 
@@ -145,7 +147,7 @@ impl WealthAnalysisEngine {
             results.monthly_rent_investment_portfolio[month_index] = running_rent_portfolio;
             results.monthly_buy_total_wealth[month_index] =
                 equity + running_buy_portfolio - selling_costs;
-            results.monthly_rent_total_wealth[month_index] = running_rent_portfolio;
+            results.monthly_rent_total_wealth[month_index] = running_rent_portfolio + security_deposit;
             results.monthly_buy_costs[month_index] = ownership_costs;
             results.monthly_rent_costs[month_index] = rental_costs;
 
@@ -198,7 +200,7 @@ impl WealthAnalysisEngine {
         current_home_value: f64,
         year: usize,
         monthly_mortgage: f64,
-        remaining_balance: f64,
+        pre_payment_balance: f64,
     ) -> f64 {
         // Get inflation multiplier for this year
         let inflation_mult = self.investment_params.inflation_multiplier(year);
@@ -224,7 +226,7 @@ impl WealthAnalysisEngine {
         // Only applies when a monthly_pmi amount has been entered.
         let pmi = if self.property_data.monthly_pmi > 0.0 {
             let ltv =
-                remaining_balance / self.property_data.home_price * 100.0;
+                pre_payment_balance / self.property_data.home_price * 100.0;
             if ltv > self.property_data.pmi_drop_off_ltv {
                 self.property_data.monthly_pmi
             } else {
@@ -332,8 +334,9 @@ impl WealthAnalysisEngine {
 
             results.buy_total_wealth[year] = buy_equity + buy_investments - selling_costs;
 
-            // Renter wealth = investment portfolio only
-            results.rent_total_wealth[year] = results.rent_investment_portfolio[year];
+            // Renter wealth = investment portfolio + security deposit (returned at end of tenancy)
+            results.rent_total_wealth[year] = results.rent_investment_portfolio[year]
+                + self.rental_data.security_deposit;
         }
     }
 

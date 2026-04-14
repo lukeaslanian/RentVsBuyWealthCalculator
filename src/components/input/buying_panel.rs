@@ -667,7 +667,7 @@ fn InterestRateField(
     let rate_info: Option<String> = if crate::models::is_default_rate_from_fred() {
         crate::models::default_interest_rate_date().map(|date| {
             format!(
-                "FRED 30-yr fixed rate as of {} (updated weekly)",
+                "Defaults to the FRED 30-yr fixed rate as of {} (updated weekly)",
                 date
             )
         })

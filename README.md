@@ -48,7 +48,8 @@ This accurately reflects the 2017 Tax Cuts and Jobs Act (TCJA) provisions, which
 
 ## Live Mortgage Rates
 
-The app can fetch current 30-year fixed mortgage rates from the [Federal Reserve Economic Data (FRED)](https://fred.stlouisfed.org/) API at build time and during runtime.
+The app fetches current 30-year fixed mortgage rates from the [Federal Reserve Economic Data (FRED)](https://fred.stlouisfed.org/) API at build time. 
+It also rebuilds weekly to get refreshed rates and avoid CORS related issues that arise when trying to call directly instead (updates to the FRED data itself are released approx. weekly anyways).
 
 ### For Local Development (Optional)
 
@@ -135,7 +136,6 @@ Output will be in the `dist/` directory.
 │   └── utils/                  # Utilities
 │       ├── config.rs
 │       ├── currency_formatter.rs
-│       ├── fred_api.rs         # FRED API client (runtime fetching)
 │       └── validator.rs
 └── .github/workflows/
     └── deploy.yml              # GitHub Actions
