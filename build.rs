@@ -34,7 +34,43 @@ fn fetch_current_mortgage_rate() -> Option<(f64, String)> {
     })
 }
 
+fn build_tailwind_css() {
+    // Rerun if any of these change
+    println!("cargo:rerun-if-changed=assets/input.css");
+    println!("cargo:rerun-if-changed=tailwind.config.js");
+    println!("cargo:rerun-if-changed=src");
+
+    // Use the locally-installed tailwindcss binary (requires `npm install` to have been run)
+    let binary = if cfg!(windows) {
+        "node_modules\\.bin\\tailwindcss.cmd"
+    } else {
+        "node_modules/.bin/tailwindcss"
+    };
+
+    let status = std::process::Command::new(binary)
+        .args([
+            "-i", "./assets/input.css",
+            "-o", "./assets/tailwind.css",
+            "--minify",
+        ])
+        .status();
+
+    match status {
+        Ok(s) if s.success() => {
+            println!("cargo:warning=Tailwind CSS built successfully");
+        }
+        Ok(s) => {
+            println!("cargo:warning=tailwindcss exited with status {s} — run `npm install` first");
+        }
+        Err(e) => {
+            println!("cargo:warning=Could not run tailwindcss: {e} — run `npm install` first");
+        }
+    }
+}
+
 fn main() {
+    build_tailwind_css();
+
     // Try to fetch current mortgage rate from FRED
     let (default_rate, rate_date) = match fetch_current_mortgage_rate() {
         Some((rate, date)) => {

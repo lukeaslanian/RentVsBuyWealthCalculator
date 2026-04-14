@@ -1,7 +1,6 @@
 use crate::calculators::MortgageCalculator;
 use crate::components::input::DualInputField;
 use crate::models::{FilingStatus, PropertyData};
-use crate::utils::fetch_current_mortgage_rate;
 use dioxus::prelude::*;
 
 #[component]
@@ -658,115 +657,69 @@ fn InterestRateField(
     property_data: Signal<PropertyData>,
     #[props(default = false)] dark_mode: bool,
 ) -> Element {
-    let mut is_fetching = use_signal(|| false);
-    let mut rate_info = use_signal(|| None::<String>);
     let mut is_focused = use_signal(|| false);
     let mut input_text = use_signal(|| String::new());
 
-    // Set initial rate info based on build-time data
-    use_effect(move || {
-        if rate_info.read().is_none() {
-            if crate::models::is_default_rate_from_fred() {
-                if let Some(date) = crate::models::default_interest_rate_date() {
-                    let rate = crate::models::default_interest_rate();
-                    rate_info.set(Some(format!(
-                        "Build-time rate: {:.2}% (as of {}). Click 'Live Rate' to fetch current rates.",
-                        rate, date
-                    )));
-                }
-            }
-        }
-    });
-
-    let fetch_rate = move |_| {
-        spawn(async move {
-            is_fetching.set(true);
-            rate_info.set(None);
-
-            let result = fetch_current_mortgage_rate().await;
-
-            let mut data = property_data.write();
-            data.interest_rate = result.rate;
-
-            if result.is_live {
-                rate_info.set(Some(format!(
-                    "Updated to {}% (as of {})",
-                    result.rate, result.date
-                )));
-            } else {
-                rate_info.set(Some(format!("Using fallback rate: {}%", result.rate)));
-            }
-
-            is_fetching.set(false);
-        });
-    };
-
     let value = property_data.read().interest_rate;
     let is_valid = value > 0.0 && value < 20.0;
+
+    // Build rate info label from compile-time FRED data
+    let rate_info: Option<String> = if crate::models::is_default_rate_from_fred() {
+        crate::models::default_interest_rate_date().map(|date| {
+            format!(
+                "FRED 30-yr fixed rate as of {} (updated weekly)",
+                date
+            )
+        })
+    } else {
+        None
+    };
 
     rsx! {
         div {
             label { class: if dark_mode { "block text-sm font-medium text-monokai-fgMuted mb-1" } else { "block text-sm font-medium text-monokaiLight-fgMuted mb-1" },
                 "Interest Rate (%)"
             }
-            div { class: "flex gap-2",
-                input {
-                    r#type: "text",
-                    class: if dark_mode {
-                        if is_valid {
-                            "flex-1 px-3 py-2 border border-monokai-border bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-blue focus:border-monokai-blue"
-                        } else {
-                            "flex-1 px-3 py-2 border border-monokai-red bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-red focus:border-monokai-red"
-                        }
+            input {
+                r#type: "text",
+                class: if dark_mode {
+                    if is_valid {
+                        "w-full px-3 py-2 border border-monokai-border bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-blue focus:border-monokai-blue"
                     } else {
-                        if is_valid {
-                            "flex-1 px-3 py-2 border border-monokaiLight-border bg-monokaiLight-bg text-monokaiLight-fg rounded-md shadow-sm focus:ring-monokaiLight-blue focus:border-monokaiLight-blue"
-                        } else {
-                            "flex-1 px-3 py-2 border border-monokaiLight-red bg-monokaiLight-bg text-monokaiLight-fg rounded-md shadow-sm focus:ring-monokaiLight-red focus:border-monokaiLight-red"
-                        }
-                    },
-                    value: if is_focused() {
-                        input_text()
-                    } else {
-                        format!("{:.2}%", value)
-                    },
-                    inputmode: "decimal",
-                    onfocus: move |_| {
-                        is_focused.set(true);
-                        input_text.set(value.to_string());
-                    },
-                    onblur: move |_| {
-                        is_focused.set(false);
-                        let clean_value = input_text().replace("%", "").trim().to_string();
-                        if let Ok(v) = clean_value.parse::<f64>() {
-                            let mut data = property_data.write();
-                            data.interest_rate = v;
-                        }
-                    },
-                    oninput: move |evt| {
-                        input_text.set(evt.value());
-                    },
-                    title: "Annual mortgage interest rate"
-                }
-                button {
-                    r#type: "button",
-                    class: if dark_mode {
-                        "px-3 py-2 bg-monokai-blue text-monokai-bg text-sm font-medium rounded-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-                    } else {
-                        "px-3 py-2 bg-monokaiLight-blue text-white text-sm font-medium rounded-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-                    },
-                    disabled: is_fetching(),
-                    onclick: fetch_rate,
-                    title: "Fetch current 30-year fixed rate from FRED",
-                    if is_fetching() {
-                        "Fetching..."
-                    } else {
-                        "Live Rate"
+                        "w-full px-3 py-2 border border-monokai-red bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-red focus:border-monokai-red"
                     }
-                }
+                } else {
+                    if is_valid {
+                        "w-full px-3 py-2 border border-monokaiLight-border bg-monokaiLight-bg text-monokaiLight-fg rounded-md shadow-sm focus:ring-monokaiLight-blue focus:border-monokaiLight-blue"
+                    } else {
+                        "w-full px-3 py-2 border border-monokaiLight-red bg-monokaiLight-bg text-monokaiLight-fg rounded-md shadow-sm focus:ring-monokaiLight-red focus:border-monokaiLight-red"
+                    }
+                },
+                value: if is_focused() {
+                    input_text()
+                } else {
+                    format!("{:.2}%", value)
+                },
+                inputmode: "decimal",
+                onfocus: move |_| {
+                    is_focused.set(true);
+                    input_text.set(value.to_string());
+                },
+                onblur: move |_| {
+                    is_focused.set(false);
+                    let clean_value = input_text().replace("%", "").trim().to_string();
+                    if let Ok(v) = clean_value.parse::<f64>() {
+                        let mut data = property_data.write();
+                        data.interest_rate = v;
+                    }
+                },
+                oninput: move |evt| {
+                    input_text.set(evt.value());
+                },
+                title: "Annual mortgage interest rate"
             }
-            if let Some(info) = rate_info.read().as_ref() {
-                p { class: if dark_mode { "text-xs text-monokai-green mt-1" } else { "text-xs text-monokaiLight-green mt-1" },
+            if let Some(info) = rate_info {
+                p { class: if dark_mode { "text-xs text-monokai-fgDim mt-1" } else { "text-xs text-monokaiLight-fgDim mt-1" },
                     "{info}"
                 }
             }

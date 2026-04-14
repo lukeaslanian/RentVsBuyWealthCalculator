@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  schedule:
+    # Rebuild every Monday at 06:00 UTC to pull a fresh FRED mortgage rate
+    - cron: "0 6 * * 1"
 
 permissions:
   contents: write
@@ -40,6 +43,14 @@ jobs:
         uses: taiki-e/install-action@v2
         with:
           tool: dioxus-cli@0.7.3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install npm dependencies
+        run: npm install
 
       - name: Build
         env:

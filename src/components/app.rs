@@ -59,6 +59,7 @@ pub fn App() -> Element {
     };
 
     rsx! {
+        document::Link { rel: "stylesheet", href: asset!("/assets/tailwind.css") }
         div {
             class: if dark_mode() { "min-h-screen bg-monokai-bg dark" } else { "min-h-screen bg-monokaiLight-bg" },
             // Header

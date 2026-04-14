@@ -155,11 +155,14 @@ async fn fetch_rate_from_fred() -> Result<MortgageRateResult, String> {
     // Fully percent-encode the target URL so it can be safely passed as a query param
     let encoded_url = percent_encode(&fred_url);
 
-    // Try multiple CORS proxies in order
+    // Try multiple CORS proxies in order.
+    // corsproxy.io returns 403 for custom domains — excluded.
+    // allorigins.win is tried twice since it's intermittently flaky.
     let proxy_urls = [
         format!("https://api.allorigins.win/raw?url={}", encoded_url),
-        format!("https://corsproxy.io/?url={}", encoded_url),
-        format!("https://corsproxy.io/?{}", encoded_url),
+        format!("https://api.codetabs.com/v1/proxy?quest={}", fred_url),
+        format!("https://thingproxy.freeboard.io/fetch/{}", fred_url),
+        format!("https://api.allorigins.win/raw?url={}", encoded_url),
     ];
 
     let mut last_error = String::from("No proxies attempted");

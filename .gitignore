@@ -1,2 +1,6 @@
 /target/
 .idea/vcs.xml
+.DS_Store
+node_modules/
+assets/tailwind.css
+public/
