@@ -29,6 +29,8 @@ fn matches_preset(
         && approx_eq(property_data.seller_closing_assistance, preset.seller_closing_assistance, EPSILON)
         && approx_eq(property_data.closing_costs_percent_sale, preset.closing_costs_percent_sale, EPSILON)
         && approx_eq(property_data.home_appreciation_rate, preset.home_appreciation_rate, EPSILON)
+        && approx_eq(property_data.monthly_pmi, preset.estimated_monthly_pmi(), EPSILON)
+        && approx_eq(property_data.state_income_tax_rate, preset.state_income_tax_rate, EPSILON)
         // Compare RentalData fields that come from the preset
         && approx_eq(rental_data.monthly_rent, preset.monthly_rent, EPSILON)
         && approx_eq(rental_data.amenity_fees, preset.amenity_fees, EPSILON)

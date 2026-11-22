@@ -20,6 +20,9 @@ impl AppConfig {
     /// Default mortgage term in years
     pub const DEFAULT_MORTGAGE_TERM_YEARS: usize = 30;
 
+    /// PMI is only required when the first mortgage starts above this loan-to-value (%)
+    pub const PMI_REQUIRED_ABOVE_LTV: f64 = 80.0;
+
     // ===== PROPERTY DATA VALIDATION RANGES =====
 
     /// Minimum interest rate (%)

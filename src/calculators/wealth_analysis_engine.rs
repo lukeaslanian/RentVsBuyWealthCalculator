@@ -77,10 +77,7 @@ impl WealthAnalysisEngine {
         // Buyer starts at $0 (spent down payment), Renter starts with down payment invested.
         // Only the buyer's own cash counts: any DC HPAP assistance covering the down payment
         // or closing costs is a loan, not buyer cash (it is repaid via payments / at sale).
-        let down_payment = self.property_data.buyer_cash_down_payment();
-        let purchase_closing_costs = self.property_data.buyer_cash_closing_costs();
-        let mortgage_points_cost = self.property_data.mortgage_points_cost();
-        let buy_start_capital = down_payment + purchase_closing_costs + mortgage_points_cost;
+        let buy_start_capital = self.property_data.buyer_cash_at_closing();
 
         // Renter's initial costs: security deposit + broker fee (if enabled)
         let security_deposit = self.rental_data.security_deposit;
@@ -247,7 +244,9 @@ impl WealthAnalysisEngine {
 
         // PMI: charged until LTV (based on original purchase price) drops to pmi_drop_off_ltv.
         // Only applies when a monthly_pmi amount has been entered.
-        let pmi = if self.property_data.monthly_pmi > 0.0 {
+        // Lenders only require PMI when the first mortgage starts above 80% LTV.
+        let pmi_required = self.property_data.initial_ltv_percent() > AppConfig::PMI_REQUIRED_ABOVE_LTV;
+        let pmi = if pmi_required && self.property_data.monthly_pmi > 0.0 {
             let ltv =
                 pre_payment_balance / self.property_data.home_price * 100.0;
             if ltv > self.property_data.pmi_drop_off_ltv {
@@ -413,67 +412,103 @@ mod tests {
         engine.results().expect("Results should be present").clone()
     }
 
+    /// Default DC 2BR with HPAP on for a 1-person household earning $70,000
+    /// (51-80% MFI: $161,600 max, no monthly payments)
+    fn hpap_property_data() -> PropertyData {
+        let mut data = PropertyData::new();
+        data.enable_hpap = true;
+        data.household_income = 70000.0;
+        data.hpap_household_size = 1;
+        data
+    }
+
     #[test]
     fn test_hpap_disabled_matches_baseline() {
         let baseline = run(PropertyData::new());
         let mut toggled = PropertyData::new();
-        toggled.hpap_repayment = crate::models::HpapRepayment::FiveYearDeferral40Year;
-        toggled.hpap_loan_amount = 50000.0;
+        toggled.hpap_household_size = 4;
+        toggled.hpap_liquid_assets = 50000.0;
+        toggled.hpap_closing_cost_assistance = 1000.0;
         // enable_hpap stays false: other HPAP fields must be ignored
         assert_eq!(baseline, run(toggled));
     }
 
     #[test]
-    fn test_hpap_reduces_mortgage_and_renter_start_capital() {
-        let baseline = run(PropertyData::new());
+    fn test_hpap_lowers_buyer_cash_not_first_mortgage() {
+        let mut no_hpap = hpap_property_data();
+        no_hpap.enable_hpap = false;
+        let baseline = run(no_hpap);
+        let with_hpap_data = hpap_property_data();
+        let with_hpap = run(with_hpap_data.clone());
 
-        let mut with_hpap = PropertyData::new();
-        with_hpap.enable_hpap = true;
-        with_hpap.hpap_loan_amount = 100000.0;
-        let hpap = run(with_hpap.clone());
-
-        // Gap financing reduces the first mortgage payment
-        assert!(hpap.monthly_mortgage_payment < baseline.monthly_mortgage_payment);
-        // Buyer spends less cash upfront, so the renter has less to invest initially
-        assert!(hpap.monthly_rent_investment_portfolio[0] < baseline.monthly_rent_investment_portfolio[0]);
-        // Deferred-until-sale: full HPAP balance is subtracted from equity
+        // Same down payment = same first mortgage
+        assert_eq!(with_hpap.monthly_mortgage_payment, baseline.monthly_mortgage_payment);
+        // Less buyer cash, so the renter starts with less invested
+        assert!(
+            with_hpap.monthly_rent_investment_portfolio[0]
+                < baseline.monthly_rent_investment_portfolio[0]
+        );
+        // Deferred tier: full HPAP balance comes out of equity
         let expected_equity_year1 =
-            hpap.home_value[0] - hpap.mortgage_balance[0] - with_hpap.hpap_total_loan();
-        assert!((hpap.home_equity[0] - expected_equity_year1).abs() < 1e-6);
+            with_hpap.home_value[0] - with_hpap.mortgage_balance[0] - with_hpap_data.hpap_total_loan();
+        assert!((with_hpap.home_equity[0] - expected_equity_year1).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_full_hpap_lowers_first_mortgage() {
+        let baseline = run(hpap_property_data());
+        let mut full = hpap_property_data();
+        full.down_payment_percent = full.hpap_full_use_down_payment_percent().unwrap();
+        let full_results = run(full);
+        assert!(full_results.monthly_mortgage_payment < baseline.monthly_mortgage_payment);
     }
 
     #[test]
     fn test_hpap_moderate_tier_payments_start_in_year_six() {
-        let mut deferred = PropertyData::new();
-        deferred.enable_hpap = true;
-        deferred.hpap_loan_amount = 100000.0;
-        let mut moderate = deferred.clone();
-        moderate.hpap_repayment = crate::models::HpapRepayment::FiveYearDeferral40Year;
+        let mut moderate = hpap_property_data();
+        moderate.household_income = 120000.0; // 81-110% MFI
+        let mut no_hpap = moderate.clone();
+        no_hpap.enable_hpap = false;
 
-        let deferred_results = run(deferred);
         let moderate_results = run(moderate.clone());
+        let baseline = run(no_hpap);
 
-        // Identical through month 60
-        assert_eq!(
-            deferred_results.monthly_buy_costs[59],
-            moderate_results.monthly_buy_costs[59]
-        );
-        // Month 61 adds the HPAP payment
-        let diff = moderate_results.monthly_buy_costs[60] - deferred_results.monthly_buy_costs[60];
+        // First mortgage is identical, so monthly costs differ only by the HPAP payment
+        assert_eq!(moderate_results.monthly_buy_costs[59], baseline.monthly_buy_costs[59]);
+        let diff = moderate_results.monthly_buy_costs[60] - baseline.monthly_buy_costs[60];
         assert!((diff - moderate.hpap_scheduled_payment()).abs() < 1e-6);
+        assert!(moderate.hpap_scheduled_payment() > 0.0);
     }
 
     #[test]
     fn test_buyer_invests_upfront_surplus_when_renter_spends_more() {
-        let mut property_data = PropertyData::new();
-        property_data.enable_hpap = true;
-        property_data.hpap_loan_amount = 100000.0;
-        property_data.closing_costs_percent_purchase = 0.5; // fully covered by $4k assistance
+        let mut property_data = hpap_property_data();
+        property_data.hpap_liquid_assets = 0.0; // $500 required contribution
+        property_data.closing_costs_percent_purchase = 0.5; // fully covered by assistance
 
-        let results = run(property_data);
-        // Buyer's cash at closing is $0, renter pays a security deposit, so the buyer
-        // starts with the difference invested and the renter starts with nothing.
+        let results = run(property_data.clone());
+        // Buyer pays only the $500 contribution; renter pays a $3,200 deposit up front,
+        // so the buyer starts with the difference invested
+        assert!((property_data.buyer_cash_at_closing() - 500.0).abs() < 1e-6);
         assert!(results.monthly_buy_investment_portfolio[0] > 0.0);
+    }
+
+    #[test]
+    fn test_no_pmi_when_first_mortgage_starts_at_or_below_80_ltv() {
+        let mut twenty_down = PropertyData::new();
+        twenty_down.down_payment_percent = 20.0;
+        twenty_down.monthly_pmi = 65.0;
+        let mut no_pmi = twenty_down.clone();
+        no_pmi.monthly_pmi = 0.0;
+        assert_eq!(run(twenty_down).monthly_buy_costs[0], run(no_pmi).monthly_buy_costs[0]);
+
+        // 3% down: PMI applies
+        let mut three_down = PropertyData::new();
+        three_down.monthly_pmi = 65.0;
+        let mut three_down_no_pmi = three_down.clone();
+        three_down_no_pmi.monthly_pmi = 0.0;
+        let diff = run(three_down).monthly_buy_costs[0] - run(three_down_no_pmi).monthly_buy_costs[0];
+        assert!((diff - 65.0).abs() < 1e-6);
     }
 
     fn run_with_cg_rate(capital_gains_tax_rate: f64) -> FinancialResults {

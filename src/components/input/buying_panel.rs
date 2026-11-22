@@ -1,7 +1,8 @@
 use crate::calculators::MortgageCalculator;
 use crate::components::input::DualInputField;
 use crate::models::{
-    salt_cap, FilingStatus, HpapRepayment, PropertyData, HPAP_MAX_CLOSING_COST_ASSISTANCE,
+    hpap_income_limit, salt_cap, FilingStatus, HpapRepayment, PropertyData,
+    HPAP_MAX_CLOSING_COST_ASSISTANCE, HPAP_MAX_GAP_FINANCING, HPAP_MAX_HOUSEHOLD_SIZE,
     TAX_BASE_YEAR,
 };
 use dioxus::prelude::*;
@@ -11,25 +12,71 @@ pub fn BuyingInputPanel(
     property_data: Signal<PropertyData>,
     #[props(default = false)] dark_mode: bool,
 ) -> Element {
-    // Summary of how HPAP changes cash at closing, first mortgage, and repayment
-    let hpap_summary = {
+    // HPAP eligibility, amounts, and repayment for the current inputs
+    let (hpap_eligible, hpap_tier_text, hpap_summary, hpap_room_text, hpap_full_percent) = {
         let data = property_data.read();
-        let cash_at_closing = data.buyer_cash_down_payment()
-            + data.buyer_cash_closing_costs()
-            + data.mortgage_points_cost();
-        let mut summary = format!(
-            "HPAP loan: {} · Your cash at closing: {} · First mortgage: {}",
-            format_currency_input(data.hpap_total_loan()),
-            format_currency_input(cash_at_closing),
-            format_currency_input(data.loan_amount()),
-        );
-        if data.hpap_repayment == HpapRepayment::FiveYearDeferral40Year {
-            summary.push_str(&format!(
-                " · HPAP payment from year 6: {}/mo",
-                format_currency_input(data.hpap_scheduled_payment())
-            ));
+        match data.hpap_tier() {
+            Some(tier) => {
+                let tier_label = if data.hpap_enter_own_max {
+                    "Your maximum".to_string()
+                } else {
+                    format!("Your tier ({})", tier.mfi_band)
+                };
+                let tier_text = format!(
+                    "{}: up to {} gap financing + up to {} for closing costs; {}.",
+                    tier_label,
+                    format_currency_input(tier.max_gap_financing),
+                    format_currency_input(HPAP_MAX_CLOSING_COST_ASSISTANCE),
+                    tier.repayment.display_name(),
+                );
+                let mut summary = format!(
+                    "HPAP loan: {} ({} gap + {} closing) · Required contribution: {} · Your cash at closing: {} · First mortgage: {} ({:.1}% LTV)",
+                    format_currency_input(data.hpap_total_loan()),
+                    format_currency_input(data.hpap_gap_financing()),
+                    format_currency_input(data.hpap_closing_costs_applied()),
+                    format_currency_input(data.hpap_required_contribution()),
+                    format_currency_input(data.buyer_cash_at_closing()),
+                    format_currency_input(data.loan_amount()),
+                    data.initial_ltv_percent(),
+                );
+                if tier.repayment == HpapRepayment::FiveYearDeferral40Year {
+                    summary.push_str(&format!(
+                        " · HPAP payment from year 6: {}/mo",
+                        format_currency_input(data.hpap_scheduled_payment())
+                    ));
+                }
+                let unused = tier.max_gap_financing - data.hpap_gap_financing();
+                let room_text = if unused > 1.0 {
+                    format!(
+                        "You're using {} of your {} HPAP limit. A larger down payment borrows more from HPAP (0%) and less from the bank.",
+                        format_currency_input(data.hpap_gap_financing()),
+                        format_currency_input(tier.max_gap_financing),
+                    )
+                } else {
+                    String::new()
+                };
+                (true, tier_text, summary, room_text, data.hpap_full_use_down_payment_percent())
+            }
+            None => {
+                let tier_text = format!(
+                    "Not eligible: household income of {} is above the 110% MFI limit of {} for a household of {}.",
+                    format_currency_input(data.household_income),
+                    format_currency_input(hpap_income_limit(data.hpap_household_size)),
+                    data.hpap_household_size,
+                );
+                (false, tier_text, String::new(), String::new(), None)
+            }
         }
-        summary
+    };
+    let down_payment_label = if property_data.read().enable_hpap {
+        "Down Payment (incl. HPAP)"
+    } else {
+        "Down Payment"
+    };
+    let down_payment_tooltip = if property_data.read().enable_hpap {
+        "Total down payment, including HPAP gap financing. This sets your first mortgage; HPAP covers what your required contribution doesn't, up to your tier limit."
+    } else {
+        "Percentage of home price paid upfront (e.g., 3% or 20%)"
     };
 
     // SALT cap note for the first analysis year (depends on income)
@@ -70,7 +117,7 @@ pub fn BuyingInputPanel(
 
                 // Down Payment % and $
                 DualInputField {
-                    label: "Down Payment",
+                    label: down_payment_label,
                     percent_value: property_data.read().down_payment_percent,
                     dollar_value: {
                         let data = property_data.read();
@@ -90,7 +137,7 @@ pub fn BuyingInputPanel(
                             data.down_payment_percent = percent;
                         }
                     },
-                    tooltip: "Percentage of home price paid upfront (e.g., 3% or 20%)",
+                    tooltip: down_payment_tooltip,
                     show_first_year_label: false,
                     percent_min: Some(0.0),
                     percent_max: Some(100.0),
@@ -407,16 +454,114 @@ pub fn BuyingInputPanel(
                     // HPAP details (only shown when enabled)
                     if property_data.read().enable_hpap {
                         div { class: if dark_mode { "bg-monokai-bgLighter rounded-lg p-4 space-y-3" } else { "bg-monokaiLight-bg rounded-lg p-4 space-y-3" },
+                            // How the HPAP maximum is determined
+                            div {
+                                label { class: if dark_mode { "block text-sm font-medium text-monokai-fgMuted mb-1" } else { "block text-sm font-medium text-monokaiLight-fgMuted mb-1" },
+                                    "HPAP Maximum"
+                                }
+                                select {
+                                    class: if dark_mode {
+                                        "w-full px-3 py-2 border border-monokai-border bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-blue focus:border-monokai-blue"
+                                    } else {
+                                        "w-full px-3 py-2 border border-monokaiLight-border bg-monokaiLight-bg text-monokaiLight-fg rounded-md shadow-sm focus:ring-monokaiLight-blue focus:border-monokaiLight-blue"
+                                    },
+                                    value: if property_data.read().hpap_enter_own_max { "own" } else { "table" },
+                                    onchange: move |evt| {
+                                        let mut data = property_data.write();
+                                        data.hpap_enter_own_max = evt.value() == "own";
+                                    },
+                                    option { value: "table", "Calculate it for me (household size + income)" }
+                                    option { value: "own", "I know my maximum" }
+                                }
+                            }
+
+                            if property_data.read().hpap_enter_own_max {
+                                InputField {
+                                    label: "Your HPAP Maximum ($)",
+                                    value: property_data.read().hpap_own_max,
+                                    onchange: move |v| {
+                                        let mut data = property_data.write();
+                                        data.hpap_own_max = v;
+                                    },
+                                    tooltip: "Your maximum HPAP gap financing (e.g., from your DHCD eligibility letter), not counting closing cost assistance. The program cap is $202,000.",
+                                    min: Some(0.0),
+                                    max: Some(HPAP_MAX_GAP_FINANCING),
+                                    dark_mode: dark_mode,
+                                }
+
+                                div {
+                                    label { class: if dark_mode { "block text-sm font-medium text-monokai-fgMuted mb-1" } else { "block text-sm font-medium text-monokaiLight-fgMuted mb-1" },
+                                        "Your Repayment Terms"
+                                    }
+                                    select {
+                                        class: if dark_mode {
+                                            "w-full px-3 py-2 border border-monokai-border bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-blue focus:border-monokai-blue"
+                                        } else {
+                                            "w-full px-3 py-2 border border-monokaiLight-border bg-monokaiLight-bg text-monokaiLight-fg rounded-md shadow-sm focus:ring-monokaiLight-blue focus:border-monokaiLight-blue"
+                                        },
+                                        value: if property_data.read().hpap_own_repayment == HpapRepayment::FiveYearDeferral40Year { "payments" } else { "deferred" },
+                                        onchange: move |evt| {
+                                            let mut data = property_data.write();
+                                            data.hpap_own_repayment = if evt.value() == "payments" {
+                                                HpapRepayment::FiveYearDeferral40Year
+                                            } else {
+                                                HpapRepayment::DeferredUntilSale
+                                            };
+                                        },
+                                        option { value: "deferred", "No monthly payments; due on sale (up to 80% MFI)" }
+                                        option { value: "payments", "No payments for 5 years, then 40-year payments (81-110% MFI)" }
+                                    }
+                                }
+                            } else {
+                                // Household size (DHCD table column)
+                                div {
+                                    label { class: if dark_mode { "block text-sm font-medium text-monokai-fgMuted mb-1" } else { "block text-sm font-medium text-monokaiLight-fgMuted mb-1" },
+                                        "Household Size"
+                                    }
+                                    select {
+                                        class: if dark_mode {
+                                            "w-full px-3 py-2 border border-monokai-border bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-blue focus:border-monokai-blue"
+                                        } else {
+                                            "w-full px-3 py-2 border border-monokaiLight-border bg-monokaiLight-bg text-monokaiLight-fg rounded-md shadow-sm focus:ring-monokaiLight-blue focus:border-monokaiLight-blue"
+                                        },
+                                        value: "{property_data.read().hpap_household_size}",
+                                        onchange: move |evt| {
+                                            if let Ok(n) = evt.value().parse::<usize>() {
+                                                let mut data = property_data.write();
+                                                data.hpap_household_size = n.clamp(1, HPAP_MAX_HOUSEHOLD_SIZE);
+                                            }
+                                        },
+                                        for n in 1..=HPAP_MAX_HOUSEHOLD_SIZE {
+                                            option { value: "{n}", selected: n == property_data.read().hpap_household_size, "{n}" }
+                                        }
+                                    }
+                                }
+
+                                // Household income (same value as the Tax Benefits section)
+                                InputField {
+                                    label: "Household Income ($/year)",
+                                    value: property_data.read().household_income,
+                                    onchange: move |v| {
+                                        let mut data = property_data.write();
+                                        data.household_income = v;
+                                    },
+                                    tooltip: "Total annual income of everyone in the household. With household size, this sets your HPAP tier from the DHCD FY26 table (loans closed after Oct 1, 2026). Also used for taxes.",
+                                    min: Some(0.0),
+                                    max: Some(100_000_000.0),
+                                    max_exclusive: true,
+                                    dark_mode: dark_mode,
+                                }
+                            }
+
                             InputField {
-                                label: "HPAP Loan Amount ($)",
-                                value: property_data.read().hpap_loan_amount,
+                                label: "Savings / Liquid Assets ($)",
+                                value: property_data.read().hpap_liquid_assets,
                                 onchange: move |v| {
                                     let mut data = property_data.write();
-                                    data.hpap_loan_amount = v;
+                                    data.hpap_liquid_assets = v;
                                 },
-                                tooltip: "HPAP gap financing per the DHCD FY26 table (loans closed after Oct 1, 2026), based on income vs. Median Family Income and household size: up to 50% MFI $202,000; 51-80% MFI $161,600 / $141,400 / $101,000; 81-110% MFI $80,800 / $70,000. Covers your down payment first; any excess reduces your first mortgage.",
+                                tooltip: "Cash and liquid assets before buying. HPAP requires you to contribute $500 or 50% of liquid assets above $3,000, whichever is greater.",
                                 min: Some(0.0),
-                                max: Some(property_data.read().home_price),
                                 dark_mode: dark_mode,
                             }
 
@@ -427,43 +572,48 @@ pub fn BuyingInputPanel(
                                     let mut data = property_data.write();
                                     data.hpap_closing_cost_assistance = v;
                                 },
-                                tooltip: "Additional HPAP assistance toward closing costs (up to $4,000), added to the HPAP loan balance",
+                                tooltip: "HPAP assistance toward closing costs (up to $4,000), added to the HPAP loan balance",
                                 min: Some(0.0),
                                 max: Some(HPAP_MAX_CLOSING_COST_ASSISTANCE),
                                 dark_mode: dark_mode,
                             }
 
-                            div {
-                                label { class: if dark_mode { "block text-sm font-medium text-monokai-fgMuted mb-1" } else { "block text-sm font-medium text-monokaiLight-fgMuted mb-1" },
-                                    "Repayment (Income Tier, % of MFI)"
-                                }
-                                select {
-                                    class: if dark_mode {
-                                        "w-full px-3 py-2 border border-monokai-border bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-blue focus:border-monokai-blue"
-                                    } else {
-                                        "w-full px-3 py-2 border border-monokaiLight-border bg-monokaiLight-bg text-monokaiLight-fg rounded-md shadow-sm focus:ring-monokaiLight-blue focus:border-monokaiLight-blue"
-                                    },
-                                    value: if matches!(property_data.read().hpap_repayment, HpapRepayment::FiveYearDeferral40Year) { "moderate" } else { "low" },
-                                    onchange: move |evt| {
-                                        let mut data = property_data.write();
-                                        data.hpap_repayment = if evt.value() == "moderate" {
-                                            HpapRepayment::FiveYearDeferral40Year
-                                        } else {
-                                            HpapRepayment::DeferredUntilSale
-                                        };
-                                    },
-                                    option { value: "low", "{HpapRepayment::DeferredUntilSale.display_name()}" }
-                                    option { value: "moderate", "{HpapRepayment::FiveYearDeferral40Year.display_name()}" }
+                            // Tier / eligibility
+                            p { class: if hpap_eligible {
+                                    if dark_mode { "text-xs text-monokai-fg" } else { "text-xs text-monokaiLight-fg" }
+                                } else {
+                                    if dark_mode { "text-xs text-monokai-red" } else { "text-xs text-monokaiLight-red" }
+                                },
+                                "{hpap_tier_text}"
+                            }
+
+                            if hpap_eligible {
+                                p { class: if dark_mode { "text-xs text-monokai-fgMuted" } else { "text-xs text-monokaiLight-fgMuted" },
+                                    "{hpap_summary}"
                                 }
                             }
 
-                            // Summary of how HPAP changes the purchase
-                            p { class: if dark_mode { "text-xs text-monokai-fgMuted" } else { "text-xs text-monokaiLight-fgMuted" },
-                                "{hpap_summary}"
+                            if !hpap_room_text.is_empty() {
+                                div { class: "flex flex-wrap items-center gap-2",
+                                    p { class: if dark_mode { "text-xs text-monokai-fgMuted" } else { "text-xs text-monokaiLight-fgMuted" },
+                                        "{hpap_room_text}"
+                                    }
+                                    if let Some(percent) = hpap_full_percent {
+                                        button {
+                                            r#type: "button",
+                                            class: "px-3 py-1 text-xs font-medium rounded-md bg-monokai-purple text-white hover:opacity-90 transition-opacity",
+                                            onclick: move |_| {
+                                                let mut data = property_data.write();
+                                                data.down_payment_percent = percent;
+                                            },
+                                            "Use full HPAP"
+                                        }
+                                    }
+                                }
                             }
 
                             p { class: if dark_mode { "text-xs text-monokai-fgDim italic" } else { "text-xs text-monokaiLight-fgDim italic" },
-                                "Note: HPAP is 0% interest and due in full on sale (subtracted from equity). Eligibility depends on income and household size, and funding is limited; confirm current terms with DC DHCD."
+                                "Note: HPAP is a 0% loan, due in full when you sell, refinance, or stop living there (the model assumes you stay and don't refinance). You must be a first-time buyer (no home ownership in the last 3 years), live in the DC home as your primary residence, and have good credit. Funding is limited each year; confirm with DC DHCD."
                             }
                         }
                     }

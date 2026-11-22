@@ -15,9 +15,9 @@ pub struct RentalData {
 }
 
 impl Default for RentalData {
-    /// Default constructor using Washington DC 2-bedroom preset values (January 2026)
+    /// Default constructor using Washington DC 2-bedroom preset values (November 2026)
     fn default() -> Self {
-        let monthly_rent = 3200.0; // DC 2BR rent (updated January 2026)
+        let monthly_rent = 2900.0; // DC 2BR average rent (Zumper, November 2026)
         Self {
             monthly_rent,
             amenity_fees: 75.0,
@@ -84,14 +84,14 @@ mod tests {
     #[test]
     fn test_default_values() {
         let data = RentalData::new();
-        assert_eq!(data.monthly_rent, 3200.0);
+        assert_eq!(data.monthly_rent, 2900.0);
         assert_eq!(data.rent_increase_rate, 4.0);
     }
 
     #[test]
     fn test_total_monthly_cost() {
         let data = RentalData::new();
-        let expected = 3200.0 + 75.0 + 150.0 + 25.0;
+        let expected = 2900.0 + 75.0 + 150.0 + 25.0;
         assert_eq!(data.total_monthly_rent_cost(), expected);
     }
 
@@ -99,9 +99,9 @@ mod tests {
     fn test_rent_at_year() {
         let data = RentalData::new();
         // Year 1 should be base rent
-        assert_eq!(data.rent_at_year(1), 3200.0);
+        assert_eq!(data.rent_at_year(1), 2900.0);
         // Year 2 should be base rent * 1.04
-        assert!((data.rent_at_year(2) - 3328.0).abs() < 0.1);
+        assert!((data.rent_at_year(2) - 3016.0).abs() < 0.1); // 2,900 * 1.04
     }
 
     #[test]

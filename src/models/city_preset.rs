@@ -1,12 +1,28 @@
 use super::property_data::default_interest_rate;
 use super::{
     FilingStatus, HpapRepayment, InvestmentParameters, PropertyData, RentalData,
-    DEFAULT_HOUSEHOLD_INCOME, DEFAULT_STATE_INCOME_TAX_RATE, HPAP_MAX_CLOSING_COST_ASSISTANCE,
+    DEFAULT_HOUSEHOLD_INCOME,
+    DEFAULT_HPAP_HOUSEHOLD_SIZE, DEFAULT_HPAP_LIQUID_ASSETS, HPAP_MAX_CLOSING_COST_ASSISTANCE,
 };
 use serde::{Deserialize, Serialize};
 
+/// Estimated annual PMI as a % of the loan, for ~97% LTV with good credit
+pub const PRESET_PMI_ANNUAL_RATE_PERCENT: f64 = 0.5;
+
 /// Pre-populated default values for a specific city and property size.
 /// This struct is immutable.
+///
+/// Values updated November 2026:
+/// - Rents: Zumper city rent pages (average asking rent by bedroom, Nov 21 2026)
+/// - Manhattan prices: Corcoran Report Q3 2026, resale condo median price by bedroom
+/// - San Francisco prices: spring/summer 2026 condo medians by bedroom (studio estimated)
+/// - DC and Boston prices: citywide 2026 condo medians (~$500K DC, ~$775K Boston);
+///   the split by bedroom count is estimated
+/// - Property tax: DC Class 1 0.85%; SF FY2026-27 1.1816%; Boston FY2026 $12.40/$1,000
+///   minus the ~$4,354 owner-occupant residential exemption (effective rate per price);
+///   Manhattan ~0.9% effective (estimate)
+/// - Loans above ~$1.2M are jumbo, so those presets use 20% down (no PMI)
+/// - Appreciation and rent-growth rates are long-run assumptions, not current trends
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CityPreset {
     pub city_name: String,
@@ -36,6 +52,9 @@ pub struct CityPreset {
     pub renters_insurance: f64,
     pub rent_increase_rate: f64,
 
+    // Effective state + local income tax rate (% of income) at the default household income
+    pub state_income_tax_rate: f64,
+
     // Investment parameters
     pub annual_return_rate: f64,
 }
@@ -44,6 +63,15 @@ impl CityPreset {
     /// Get display name for the preset
     pub fn display_name(&self) -> String {
         format!("{} - {} Bedroom", self.city_name, self.bedroom_type)
+    }
+
+    /// Estimated monthly PMI: ~0.5%/yr of the loan below 20% down, otherwise none
+    pub fn estimated_monthly_pmi(&self) -> f64 {
+        if self.down_payment_percent >= 20.0 {
+            return 0.0;
+        }
+        let loan = self.home_price * (1.0 - self.down_payment_percent / 100.0) - self.lender_grant;
+        (loan * PRESET_PMI_ANNUAL_RATE_PERCENT / 100.0 / 12.0).round()
     }
 
     /// Convert to PropertyData
@@ -64,7 +92,7 @@ impl CityPreset {
             seller_closing_assistance: self.seller_closing_assistance,
             closing_costs_percent_sale: self.closing_costs_percent_sale,
             home_appreciation_rate: self.home_appreciation_rate,
-            monthly_pmi: 65.0,
+            monthly_pmi: self.estimated_monthly_pmi(),
             pmi_drop_off_ltv: 78.0,
             // Tax benefits - enabled by default, user can disable
             enable_tax_benefits: true,
@@ -73,12 +101,15 @@ impl CityPreset {
             other_itemized_deductions: 0.0,
             hoa_deduction_percent: 0.0,
             household_income: DEFAULT_HOUSEHOLD_INCOME,
-            state_income_tax_rate: DEFAULT_STATE_INCOME_TAX_RATE,
+            state_income_tax_rate: self.state_income_tax_rate,
             // DC HPAP - off by default, user can enable
             enable_hpap: false,
-            hpap_loan_amount: 202000.0,
+            hpap_enter_own_max: false,
+            hpap_own_max: 0.0,
+            hpap_own_repayment: HpapRepayment::DeferredUntilSale,
+            hpap_household_size: DEFAULT_HPAP_HOUSEHOLD_SIZE,
+            hpap_liquid_assets: DEFAULT_HPAP_LIQUID_ASSETS,
             hpap_closing_cost_assistance: HPAP_MAX_CLOSING_COST_ASSISTANCE,
-            hpap_repayment: HpapRepayment::DeferredUntilSale,
         }
     }
 
@@ -111,7 +142,7 @@ impl CityPreset {
             home_price: 325000.0,
             down_payment_percent: 3.0,
             interest_rate: default_interest_rate(),
-            property_tax_rate: 0.835,
+            property_tax_rate: 0.85,
             home_insurance_annual: 1200.0,
             maintenance_percent: 1.0,
             hoa_fee: 450.0,
@@ -122,12 +153,13 @@ impl CityPreset {
             seller_closing_assistance: 0.0,
             closing_costs_percent_sale: 6.0,
             home_appreciation_rate: 3.5,
-            monthly_rent: 1950.0,
+            monthly_rent: 1846.0,
             amenity_fees: 50.0,
             rent_included_utilities: 0.0,
             rent_non_included_utilities: 120.0,
             renters_insurance: 20.0,
             rent_increase_rate: 4.0,
+            state_income_tax_rate: 6.5,
             annual_return_rate: 7.0,
         }
     }
@@ -139,7 +171,7 @@ impl CityPreset {
             home_price: 425000.0,
             down_payment_percent: 3.0,
             interest_rate: default_interest_rate(),
-            property_tax_rate: 0.835,
+            property_tax_rate: 0.85,
             home_insurance_annual: 1400.0,
             maintenance_percent: 1.0,
             hoa_fee: 550.0,
@@ -150,12 +182,13 @@ impl CityPreset {
             seller_closing_assistance: 0.0,
             closing_costs_percent_sale: 6.0,
             home_appreciation_rate: 3.5,
-            monthly_rent: 2400.0,
+            monthly_rent: 2150.0,
             amenity_fees: 50.0,
             rent_included_utilities: 0.0,
             rent_non_included_utilities: 135.0,
             renters_insurance: 22.0,
             rent_increase_rate: 4.0,
+            state_income_tax_rate: 6.5,
             annual_return_rate: 7.0,
         }
     }
@@ -167,7 +200,7 @@ impl CityPreset {
             home_price: 575000.0,
             down_payment_percent: 3.0,
             interest_rate: default_interest_rate(),
-            property_tax_rate: 0.835,
+            property_tax_rate: 0.85,
             home_insurance_annual: 1700.0,
             maintenance_percent: 1.0,
             hoa_fee: 650.0,
@@ -178,12 +211,13 @@ impl CityPreset {
             seller_closing_assistance: 0.0,
             closing_costs_percent_sale: 6.0,
             home_appreciation_rate: 3.5,
-            monthly_rent: 3200.0,
+            monthly_rent: 2900.0,
             amenity_fees: 75.0,
             rent_included_utilities: 0.0,
             rent_non_included_utilities: 150.0,
             renters_insurance: 25.0,
             rent_increase_rate: 4.0,
+            state_income_tax_rate: 6.5,
             annual_return_rate: 7.0,
         }
     }
@@ -195,7 +229,7 @@ impl CityPreset {
             home_price: 750000.0,
             down_payment_percent: 3.0,
             interest_rate: default_interest_rate(),
-            property_tax_rate: 0.835,
+            property_tax_rate: 0.85,
             home_insurance_annual: 2100.0,
             maintenance_percent: 1.0,
             hoa_fee: 800.0,
@@ -206,12 +240,13 @@ impl CityPreset {
             seller_closing_assistance: 0.0,
             closing_costs_percent_sale: 6.0,
             home_appreciation_rate: 3.5,
-            monthly_rent: 4200.0,
+            monthly_rent: 3575.0,
             amenity_fees: 100.0,
             rent_included_utilities: 0.0,
             rent_non_included_utilities: 180.0,
             renters_insurance: 30.0,
             rent_increase_rate: 4.0,
+            state_income_tax_rate: 6.5,
             annual_return_rate: 7.0,
         }
     }
@@ -222,10 +257,10 @@ impl CityPreset {
         Self {
             city_name: "Boston".to_string(),
             bedroom_type: "Studio".to_string(),
-            home_price: 450000.0,
+            home_price: 475000.0,
             down_payment_percent: 3.0,
             interest_rate: default_interest_rate(),
-            property_tax_rate: 1.18,
+            property_tax_rate: 0.32,
             home_insurance_annual: 1400.0,
             maintenance_percent: 1.0,
             hoa_fee: 400.0,
@@ -236,12 +271,13 @@ impl CityPreset {
             seller_closing_assistance: 0.0,
             closing_costs_percent_sale: 6.0,
             home_appreciation_rate: 4.0,
-            monthly_rent: 2500.0,
+            monthly_rent: 2475.0,
             amenity_fees: 50.0,
             rent_included_utilities: 0.0,
             rent_non_included_utilities: 150.0,
             renters_insurance: 25.0,
             rent_increase_rate: 4.0,
+            state_income_tax_rate: 4.9,
             annual_return_rate: 7.0,
         }
     }
@@ -250,10 +286,10 @@ impl CityPreset {
         Self {
             city_name: "Boston".to_string(),
             bedroom_type: "1".to_string(),
-            home_price: 575000.0,
+            home_price: 625000.0,
             down_payment_percent: 3.0,
             interest_rate: default_interest_rate(),
-            property_tax_rate: 1.18,
+            property_tax_rate: 0.54,
             home_insurance_annual: 1600.0,
             maintenance_percent: 1.0,
             hoa_fee: 500.0,
@@ -264,12 +300,13 @@ impl CityPreset {
             seller_closing_assistance: 0.0,
             closing_costs_percent_sale: 6.0,
             home_appreciation_rate: 4.0,
-            monthly_rent: 3100.0,
+            monthly_rent: 2900.0,
             amenity_fees: 60.0,
             rent_included_utilities: 0.0,
             rent_non_included_utilities: 160.0,
             renters_insurance: 27.0,
             rent_increase_rate: 4.0,
+            state_income_tax_rate: 4.9,
             annual_return_rate: 7.0,
         }
     }
@@ -278,10 +315,10 @@ impl CityPreset {
         Self {
             city_name: "Boston".to_string(),
             bedroom_type: "2".to_string(),
-            home_price: 750000.0,
+            home_price: 850000.0,
             down_payment_percent: 3.0,
             interest_rate: default_interest_rate(),
-            property_tax_rate: 1.18,
+            property_tax_rate: 0.73,
             home_insurance_annual: 1900.0,
             maintenance_percent: 1.0,
             hoa_fee: 600.0,
@@ -292,12 +329,13 @@ impl CityPreset {
             seller_closing_assistance: 0.0,
             closing_costs_percent_sale: 6.0,
             home_appreciation_rate: 4.0,
-            monthly_rent: 3800.0,
+            monthly_rent: 3480.0,
             amenity_fees: 75.0,
             rent_included_utilities: 0.0,
             rent_non_included_utilities: 175.0,
             renters_insurance: 30.0,
             rent_increase_rate: 4.0,
+            state_income_tax_rate: 4.9,
             annual_return_rate: 7.0,
         }
     }
@@ -306,10 +344,10 @@ impl CityPreset {
         Self {
             city_name: "Boston".to_string(),
             bedroom_type: "3".to_string(),
-            home_price: 975000.0,
+            home_price: 1150000.0,
             down_payment_percent: 3.0,
             interest_rate: default_interest_rate(),
-            property_tax_rate: 1.18,
+            property_tax_rate: 0.86,
             home_insurance_annual: 2300.0,
             maintenance_percent: 1.0,
             hoa_fee: 750.0,
@@ -320,12 +358,13 @@ impl CityPreset {
             seller_closing_assistance: 0.0,
             closing_costs_percent_sale: 6.0,
             home_appreciation_rate: 4.0,
-            monthly_rent: 4800.0,
+            monthly_rent: 3750.0,
             amenity_fees: 100.0,
             rent_included_utilities: 0.0,
             rent_non_included_utilities: 200.0,
             renters_insurance: 35.0,
             rent_increase_rate: 4.0,
+            state_income_tax_rate: 4.9,
             annual_return_rate: 7.0,
         }
     }
@@ -336,26 +375,27 @@ impl CityPreset {
         Self {
             city_name: "New York City".to_string(),
             bedroom_type: "Studio".to_string(),
-            home_price: 600000.0,
+            home_price: 644000.0,
             down_payment_percent: 3.0,
             interest_rate: default_interest_rate(),
-            property_tax_rate: 0.90,
+            property_tax_rate: 0.9,
             home_insurance_annual: 1500.0,
             maintenance_percent: 1.0,
-            hoa_fee: 700.0,
+            hoa_fee: 900.0,
             included_utilities: 0.0,
             non_included_utilities: 175.0,
             lender_grant: 0.0,
             closing_costs_percent_purchase: 4.0,
             seller_closing_assistance: 0.0,
-            closing_costs_percent_sale: 6.0,
+            closing_costs_percent_sale: 7.5,
             home_appreciation_rate: 3.5,
-            monthly_rent: 3400.0,
+            monthly_rent: 4100.0,
             amenity_fees: 75.0,
             rent_included_utilities: 0.0,
             rent_non_included_utilities: 150.0,
             renters_insurance: 30.0,
             rent_increase_rate: 3.5,
+            state_income_tax_rate: 8.9,
             annual_return_rate: 7.0,
         }
     }
@@ -364,26 +404,27 @@ impl CityPreset {
         Self {
             city_name: "New York City".to_string(),
             bedroom_type: "1".to_string(),
-            home_price: 800000.0,
+            home_price: 990000.0,
             down_payment_percent: 3.0,
             interest_rate: default_interest_rate(),
-            property_tax_rate: 0.90,
+            property_tax_rate: 0.9,
             home_insurance_annual: 1800.0,
             maintenance_percent: 1.0,
-            hoa_fee: 850.0,
+            hoa_fee: 1200.0,
             included_utilities: 0.0,
             non_included_utilities: 200.0,
             lender_grant: 0.0,
             closing_costs_percent_purchase: 4.0,
             seller_closing_assistance: 0.0,
-            closing_costs_percent_sale: 6.0,
+            closing_costs_percent_sale: 7.5,
             home_appreciation_rate: 3.5,
-            monthly_rent: 4200.0,
+            monthly_rent: 5362.0,
             amenity_fees: 100.0,
             rent_included_utilities: 0.0,
             rent_non_included_utilities: 175.0,
             renters_insurance: 32.0,
             rent_increase_rate: 3.5,
+            state_income_tax_rate: 8.9,
             annual_return_rate: 7.0,
         }
     }
@@ -392,26 +433,27 @@ impl CityPreset {
         Self {
             city_name: "New York City".to_string(),
             bedroom_type: "2".to_string(),
-            home_price: 1100000.0,
-            down_payment_percent: 3.0,
+            home_price: 1950000.0,
+            down_payment_percent: 20.0,
             interest_rate: default_interest_rate(),
-            property_tax_rate: 0.90,
+            property_tax_rate: 0.9,
             home_insurance_annual: 2200.0,
             maintenance_percent: 1.0,
-            hoa_fee: 1000.0,
+            hoa_fee: 1800.0,
             included_utilities: 0.0,
             non_included_utilities: 225.0,
             lender_grant: 0.0,
-            closing_costs_percent_purchase: 4.0,
+            closing_costs_percent_purchase: 5.0,
             seller_closing_assistance: 0.0,
-            closing_costs_percent_sale: 6.0,
+            closing_costs_percent_sale: 7.5,
             home_appreciation_rate: 3.5,
-            monthly_rent: 5500.0,
+            monthly_rent: 6850.0,
             amenity_fees: 125.0,
             rent_included_utilities: 0.0,
             rent_non_included_utilities: 200.0,
             renters_insurance: 35.0,
             rent_increase_rate: 3.5,
+            state_income_tax_rate: 8.9,
             annual_return_rate: 7.0,
         }
     }
@@ -420,26 +462,27 @@ impl CityPreset {
         Self {
             city_name: "New York City".to_string(),
             bedroom_type: "3".to_string(),
-            home_price: 1500000.0,
-            down_payment_percent: 3.0,
+            home_price: 4000000.0,
+            down_payment_percent: 20.0,
             interest_rate: default_interest_rate(),
-            property_tax_rate: 0.90,
+            property_tax_rate: 0.9,
             home_insurance_annual: 2800.0,
             maintenance_percent: 1.0,
-            hoa_fee: 1200.0,
+            hoa_fee: 3000.0,
             included_utilities: 0.0,
             non_included_utilities: 275.0,
             lender_grant: 0.0,
-            closing_costs_percent_purchase: 4.0,
+            closing_costs_percent_purchase: 5.5,
             seller_closing_assistance: 0.0,
-            closing_costs_percent_sale: 6.0,
+            closing_costs_percent_sale: 7.5,
             home_appreciation_rate: 3.5,
-            monthly_rent: 7500.0,
+            monthly_rent: 7595.0,
             amenity_fees: 150.0,
             rent_included_utilities: 0.0,
             rent_non_included_utilities: 225.0,
             renters_insurance: 40.0,
             rent_increase_rate: 3.5,
+            state_income_tax_rate: 8.9,
             annual_return_rate: 7.0,
         }
     }
@@ -450,7 +493,7 @@ impl CityPreset {
         Self {
             city_name: "San Francisco".to_string(),
             bedroom_type: "Studio".to_string(),
-            home_price: 575000.0,
+            home_price: 500000.0,
             down_payment_percent: 3.0,
             interest_rate: default_interest_rate(),
             property_tax_rate: 1.18,
@@ -464,12 +507,13 @@ impl CityPreset {
             seller_closing_assistance: 0.0,
             closing_costs_percent_sale: 6.0,
             home_appreciation_rate: 4.0,
-            monthly_rent: 2600.0,
+            monthly_rent: 2880.0,
             amenity_fees: 50.0,
             rent_included_utilities: 0.0,
             rent_non_included_utilities: 150.0,
             renters_insurance: 30.0,
             rent_increase_rate: 4.0,
+            state_income_tax_rate: 6.9,
             annual_return_rate: 7.0,
         }
     }
@@ -478,7 +522,7 @@ impl CityPreset {
         Self {
             city_name: "San Francisco".to_string(),
             bedroom_type: "1".to_string(),
-            home_price: 800000.0,
+            home_price: 775000.0,
             down_payment_percent: 3.0,
             interest_rate: default_interest_rate(),
             property_tax_rate: 1.18,
@@ -492,12 +536,13 @@ impl CityPreset {
             seller_closing_assistance: 0.0,
             closing_costs_percent_sale: 6.0,
             home_appreciation_rate: 4.0,
-            monthly_rent: 3400.0,
+            monthly_rent: 4295.0,
             amenity_fees: 60.0,
             rent_included_utilities: 0.0,
             rent_non_included_utilities: 160.0,
             renters_insurance: 32.0,
             rent_increase_rate: 4.0,
+            state_income_tax_rate: 6.9,
             annual_return_rate: 7.0,
         }
     }
@@ -506,8 +551,8 @@ impl CityPreset {
         Self {
             city_name: "San Francisco".to_string(),
             bedroom_type: "2".to_string(),
-            home_price: 1050000.0,
-            down_payment_percent: 3.0,
+            home_price: 1400000.0,
+            down_payment_percent: 20.0,
             interest_rate: default_interest_rate(),
             property_tax_rate: 1.18,
             home_insurance_annual: 2100.0,
@@ -520,12 +565,13 @@ impl CityPreset {
             seller_closing_assistance: 0.0,
             closing_costs_percent_sale: 6.0,
             home_appreciation_rate: 4.0,
-            monthly_rent: 4600.0,
+            monthly_rent: 6118.0,
             amenity_fees: 75.0,
             rent_included_utilities: 0.0,
             rent_non_included_utilities: 170.0,
             renters_insurance: 35.0,
             rent_increase_rate: 4.0,
+            state_income_tax_rate: 6.9,
             annual_return_rate: 7.0,
         }
     }
@@ -534,8 +580,8 @@ impl CityPreset {
         Self {
             city_name: "San Francisco".to_string(),
             bedroom_type: "3".to_string(),
-            home_price: 1400000.0,
-            down_payment_percent: 3.0,
+            home_price: 1850000.0,
+            down_payment_percent: 20.0,
             interest_rate: default_interest_rate(),
             property_tax_rate: 1.18,
             home_insurance_annual: 2500.0,
@@ -548,12 +594,13 @@ impl CityPreset {
             seller_closing_assistance: 0.0,
             closing_costs_percent_sale: 6.0,
             home_appreciation_rate: 4.0,
-            monthly_rent: 6000.0,
+            monthly_rent: 7500.0,
             amenity_fees: 100.0,
             rent_included_utilities: 0.0,
             rent_non_included_utilities: 190.0,
             renters_insurance: 40.0,
             rent_increase_rate: 4.0,
+            state_income_tax_rate: 6.9,
             annual_return_rate: 7.0,
         }
     }
@@ -596,7 +643,23 @@ mod tests {
         let preset = CityPreset::dc_two_bedroom();
         assert_eq!(preset.city_name, "Washington DC");
         assert_eq!(preset.home_price, 575000.0);
-        assert_eq!(preset.monthly_rent, 3200.0);
+        assert_eq!(preset.monthly_rent, 2900.0);
+    }
+
+    #[test]
+    fn test_preset_pmi_and_jumbo_down_payment() {
+        // 3% down on $575,000: loan $557,750 * 0.5% / 12 = ~$232/mo
+        assert_eq!(CityPreset::dc_two_bedroom().estimated_monthly_pmi(), 232.0);
+        // Jumbo presets use 20% down and have no PMI
+        let nyc = CityPreset::nyc_two_bedroom();
+        assert_eq!(nyc.down_payment_percent, 20.0);
+        assert_eq!(nyc.to_property_data().monthly_pmi, 0.0);
+        // Every preset's 3%-down loan stays under the ~$1.2M jumbo threshold
+        for preset in CityPreset::all_presets() {
+            if preset.down_payment_percent < 20.0 {
+                assert!(preset.home_price * 0.97 < 1_200_000.0, "{}", preset.display_name());
+            }
+        }
     }
 
     #[test]
@@ -611,8 +674,15 @@ mod tests {
     fn test_to_rental_data() {
         let preset = CityPreset::dc_two_bedroom();
         let rental_data = preset.to_rental_data();
-        assert_eq!(rental_data.monthly_rent, 3200.0);
+        assert_eq!(rental_data.monthly_rent, 2900.0);
         assert_eq!(rental_data.rent_increase_rate, 4.0);
+    }
+
+    #[test]
+    fn test_app_defaults_match_dc_two_bedroom_preset() {
+        let preset = CityPreset::dc_two_bedroom();
+        assert_eq!(preset.to_property_data(), PropertyData::new());
+        assert_eq!(preset.to_rental_data(), RentalData::new());
     }
 
     #[test]

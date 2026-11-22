@@ -26,9 +26,9 @@ Monte Carlo Panel:
 - Real-time input validation with visual feedback and smart formatting
   - Dollar amounts display with commas and $ symbol (e.g., $575,000.00)
   - Percentages auto-format with % symbol (e.g., 5.99%)
-- 16 city presets (Washington DC, Boston, NYC, San Francisco x 4 bedroom sizes)
+- 16 city presets (Washington DC, Boston, NYC (Manhattan), San Francisco x 4 bedroom sizes), updated November 2026
 - US Tax Benefits calculation (mortgage interest and property tax deductions, **enabled by default**)
-- Optional add-ons: NYC-style broker's fee for renters, and DC's [Home Purchase Assistance Program (HPAP)](https://dhcd.dc.gov/page/hpap-eligibility-how-apply-and-program-details) for buyers. HPAP is a 0% gap-financing second loan that covers the down payment first, with any excess reducing the first mortgage. You choose the repayment tier: deferred until sale, or deferred 5 years then amortized over 40 years. The remaining balance is repaid at sale.
+- Optional add-ons: NYC-style broker's fee for renters, and DC's [Home Purchase Assistance Program (HPAP)](https://dhcd.dc.gov/page/hpap-eligibility-how-apply-and-program-details) for buyers. HPAP is a 0% second loan. Your household size and income set your tier from the DHCD FY26 table (maximum amount and repayment terms), and you must contribute $500 or half your savings above $3,000. HPAP covers the rest of the down payment up to your tier limit, plus up to $4,000 of closing costs. Repayment is either nothing until you sell (up to 80% MFI) or no payments for 5 years, then 40-year payments (81-110% MFI). The remaining balance is repaid at sale.
 - Monte Carlo simulations for probabilistic analysis over the time period
 - Interactive charts showing wealth accumulation with tooltips
 - Year-by-year data breakdown table
