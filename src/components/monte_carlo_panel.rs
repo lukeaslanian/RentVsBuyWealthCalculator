@@ -4,7 +4,7 @@ use crate::utils::CurrencyFormatter;
 use charming::{
     component::{Axis, Grid, Legend, Title},
     element::{
-        AxisLabel, AxisPointer, AxisPointerType, AxisType, ItemStyle, LineStyle, SplitLine, Symbol,
+        AxisLabel, AxisPointer, AxisPointerType, AxisType, ItemStyle, LineStyle, SplitLine,
         TextStyle, Tooltip, Trigger,
     },
     series::Bar,
@@ -29,7 +29,7 @@ fn get_chart_width() -> u32 {
                 window_width.saturating_sub(80).max(350)
             } else {
                 // Single chart - use more width but cap at reasonable max
-                window_width.saturating_sub(120).min(900).max(400)
+                window_width.saturating_sub(120).clamp(400, 900)
             }
         })
         .unwrap_or(300)
@@ -313,12 +313,13 @@ fn SimulationResultsDisplay(
                 "text-monokaiLight-red bg-monokaiLight-red bg-opacity-10 border-monokaiLight-red",
             )
         }
+    } else if dark_mode {
+        (
+            "Outcome is highly sensitive to assumptions. Consider your risk tolerance carefully.",
+            "text-monokai-yellow bg-monokai-yellow bg-opacity-20 border-monokai-yellow",
+        )
     } else {
-        if dark_mode {
-            ("Outcome is highly sensitive to assumptions. Consider your risk tolerance carefully.", "text-monokai-yellow bg-monokai-yellow bg-opacity-20 border-monokai-yellow")
-        } else {
-            ("Outcome is highly sensitive to assumptions. Consider your risk tolerance carefully.", "text-monokaiLight-yellow bg-monokaiLight-yellow bg-opacity-10 border-monokaiLight-yellow")
-        }
+        ("Outcome is highly sensitive to assumptions. Consider your risk tolerance carefully.", "text-monokaiLight-yellow bg-monokaiLight-yellow bg-opacity-10 border-monokaiLight-yellow")
     };
 
     // Format numbers with thousand separators
@@ -539,7 +540,7 @@ fn calculate_stats(data: &[f64]) -> Stats {
     let min = sorted[0];
     let max = sorted[len - 1];
     let mean = sorted.iter().sum::<f64>() / len as f64;
-    let median = if len % 2 == 0 {
+    let median = if len.is_multiple_of(2) {
         (sorted[len / 2 - 1] + sorted[len / 2]) / 2.0
     } else {
         sorted[len / 2]
@@ -706,7 +707,7 @@ fn draw_histogram(data: &[f64], dark_mode: bool) {
         (width as f32 * 0.6).min(350.0) as u32
     } else {
         // Better height for larger screens - match other charts
-        (width as f32 * 0.55).min(450.0).max(350.0) as u32
+        (width as f32 * 0.55).clamp(350.0, 450.0) as u32
     };
 
     let renderer = WasmRenderer::new(width, height);

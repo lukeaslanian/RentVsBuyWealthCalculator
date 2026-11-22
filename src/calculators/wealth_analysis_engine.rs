@@ -1,4 +1,4 @@
-use crate::calculators::{BreakEvenAnalyzer, MortgageCalculator};
+use crate::calculators::{BreakEvenAnalyzer, LoanSchedule, RefinancePlan};
 #[cfg(test)]
 use crate::models::CityPreset;
 use crate::models::{FinancialResults, InvestmentParameters, PropertyData, RentalData};
@@ -34,16 +34,17 @@ impl WealthAnalysisEngine {
         // Initialize results object
         let mut results = FinancialResults::new(self.investment_params.analysis_years);
 
-        // Calculate mortgage payment using effective interest rate (after points buydown)
-        let mortgage_calc = MortgageCalculator::new(
-            self.property_data.loan_amount(),
-            self.property_data.effective_interest_rate(),
-            AppConfig::DEFAULT_MORTGAGE_TERM_YEARS,
-        );
-        results.monthly_mortgage_payment = mortgage_calc.calculate_monthly_payment();
+        // First-mortgage schedule (effective rate after points), switching to the new loan
+        // after a refinance if one is planned
+        let schedule = LoanSchedule::from_property_data(&self.property_data);
+        results.monthly_mortgage_payment = schedule.original_payment();
+        if let Some(plan) = schedule.refinance_plan() {
+            results.refinance_monthly_payment = Some(plan.new_payment);
+            results.refinance_after_years = Some(plan.after_month / AppConfig::MONTHS_PER_YEAR);
+        }
 
         // Run all calculations
-        self.calculate_investment_growth(&mut results, &mortgage_calc);
+        self.calculate_investment_growth(&mut results, &schedule);
         self.calculate_total_wealth(&mut results);
         self.find_break_even_point(&mut results);
 
@@ -68,11 +69,8 @@ impl WealthAnalysisEngine {
     ///   Renter has no equity but grows portfolio faster when renting is cheaper.
     ///
     /// Both portfolios grow with compound interest monthly.
-    fn calculate_investment_growth(
-        &self,
-        results: &mut FinancialResults,
-        mortgage_calc: &MortgageCalculator,
-    ) {
+    fn calculate_investment_growth(&self, results: &mut FinancialResults, schedule: &LoanSchedule) {
+        let refinance = schedule.refinance_plan();
         let total_months = self.investment_params.analysis_years * AppConfig::MONTHS_PER_YEAR;
 
         // STEP 1: Initialize portfolios
@@ -107,6 +105,8 @@ impl WealthAnalysisEngine {
         // Taxable assessed value: starts at the purchase price; with an assessment cap it is
         // reassessed once a year and can grow no faster than the cap
         let mut assessed_value = self.property_data.home_price;
+        // Home value when refinancing (the new lender's appraisal, used for PMI)
+        let mut refinance_home_value: Option<f64> = None;
         let monthly_appreciation_rate =
             self.property_data.home_appreciation_rate / 100.0 / AppConfig::MONTHS_PER_YEAR as f64;
 
@@ -129,19 +129,27 @@ impl WealthAnalysisEngine {
 
             // Remaining balance must be computed before ownership costs so PMI drop-off can be applied
             let month_index = month - 1;
-            let remaining_balance = mortgage_calc.calculate_remaining_balance(month);
+            let remaining_balance = schedule.remaining_balance(month);
             // PMI eligibility is based on LTV at the START of the month (before this payment is made)
-            let pre_payment_balance = mortgage_calc.calculate_remaining_balance(month - 1);
+            let pre_payment_balance = schedule.remaining_balance(month - 1);
+            let pmi = self.monthly_pmi(month, pre_payment_balance, refinance, refinance_home_value);
 
             // Calculate this month's costs for both scenarios
-            // HPAP repayment (0% interest, moderate-income tier only) is an ownership cost
-            let ownership_costs = self.calculate_monthly_ownership_costs(
+            // HPAP repayment (0% interest, moderate-income tier only) is an ownership cost,
+            // and so is any cash paid at a refinance (closing costs and/or HPAP payoff)
+            let mut ownership_costs = self.calculate_monthly_ownership_costs(
                 current_home_value,
                 assessed_value,
                 year,
-                results.monthly_mortgage_payment,
-                pre_payment_balance,
-            ) + self.property_data.hpap_monthly_payment(month);
+                schedule.monthly_payment(month),
+                pmi,
+            ) + self.hpap_payment(month, refinance);
+            if let Some(plan) = refinance {
+                if month == plan.after_month {
+                    ownership_costs += plan.cash_due();
+                    refinance_home_value = Some(current_home_value);
+                }
+            }
             let rental_costs = self.calculate_monthly_rental_costs(year);
 
             // Track total out-of-pocket spending to date
@@ -163,7 +171,7 @@ impl WealthAnalysisEngine {
             // At the end of each year, apply homeowner tax benefits.
             // Tax savings are added to the buyer's portfolio (as if they're investing their refund).
             if is_year_end && self.property_data.enable_tax_benefits {
-                let annual_interest = mortgage_calc.calculate_interest_paid_in_year(year);
+                let annual_interest = schedule.interest_paid_in_year(year);
                 let annual_hoa_fees = self.property_data.hoa_fee_at_year(year) * 12.0;
                 let tax_savings = self.property_data.calculate_annual_tax_savings(
                     year,
@@ -180,9 +188,8 @@ impl WealthAnalysisEngine {
 
             // Net worth if everything were cashed out this month.
             // Equity is net of all liens: first mortgage + any outstanding HPAP balance
-            let equity = current_home_value
-                - remaining_balance
-                - self.property_data.hpap_balance_after_month(month);
+            let equity =
+                current_home_value - remaining_balance - self.hpap_balance(month, refinance);
             let selling_costs =
                 current_home_value * (self.property_data.closing_costs_percent_sale / 100.0);
             let home_sale_tax = self.property_data.home_sale_capital_gains_tax(
@@ -225,7 +232,8 @@ impl WealthAnalysisEngine {
                     rental_costs,
                     running_buy_portfolio,
                     running_rent_portfolio,
-                    mortgage_calc,
+                    schedule,
+                    refinance,
                 );
             }
         }
@@ -237,7 +245,7 @@ impl WealthAnalysisEngine {
         assessed_value: f64,
         year: usize,
         monthly_mortgage: f64,
-        pre_payment_balance: f64,
+        pmi: f64,
     ) -> f64 {
         // Get inflation multiplier for this year
         let inflation_mult = self.investment_params.inflation_multiplier(year);
@@ -259,16 +267,6 @@ impl WealthAnalysisEngine {
         // Utilities grow with inflation
         let utilities = self.property_data.non_included_utilities * inflation_mult;
 
-        // PMI: rate x first mortgage (0 if the loan starts at or below 80% LTV), charged until
-        // the balance drops to pmi_drop_off_ltv of the original purchase price.
-        let monthly_pmi = self.property_data.monthly_pmi();
-        let ltv = pre_payment_balance / self.property_data.home_price * 100.0;
-        let pmi = if monthly_pmi > 0.0 && ltv > self.property_data.pmi_drop_off_ltv {
-            monthly_pmi
-        } else {
-            0.0
-        };
-
         monthly_mortgage
             + monthly_property_tax
             + monthly_insurance
@@ -276,6 +274,60 @@ impl WealthAnalysisEngine {
             + current_hoa_fee
             + utilities
             + pmi
+    }
+
+    /// PMI due in `month`. Original loan: rate x loan (0 if it starts at or below 80% LTV),
+    /// until the balance falls to pmi_drop_off_ltv of the purchase price. After a refinance,
+    /// the same rules apply to the new loan against the home's value at the refinance.
+    fn monthly_pmi(
+        &self,
+        month: usize,
+        pre_payment_balance: f64,
+        refinance: Option<&RefinancePlan>,
+        refinance_home_value: Option<f64>,
+    ) -> f64 {
+        let (monthly_pmi, value_basis) = match (refinance, refinance_home_value) {
+            (Some(plan), Some(home_value)) if month > plan.after_month && home_value > 0.0 => {
+                let starts_above_80 =
+                    plan.new_principal / home_value * 100.0 > AppConfig::PMI_REQUIRED_ABOVE_LTV;
+                let pmi = if starts_above_80 {
+                    plan.new_principal * self.property_data.pmi_rate_percent / 100.0 / 12.0
+                } else {
+                    0.0
+                };
+                (pmi, home_value)
+            }
+            _ => (
+                self.property_data.monthly_pmi(),
+                self.property_data.home_price,
+            ),
+        };
+        let ltv = pre_payment_balance / value_basis * 100.0;
+        if monthly_pmi > 0.0 && ltv > self.property_data.pmi_drop_off_ltv {
+            monthly_pmi
+        } else {
+            0.0
+        }
+    }
+
+    /// HPAP payment due in `month` (none after a refinance that pays HPAP off)
+    fn hpap_payment(&self, month: usize, refinance: Option<&RefinancePlan>) -> f64 {
+        match refinance {
+            Some(plan) if plan.pays_off_hpap(&self.property_data) && month > plan.after_month => {
+                0.0
+            }
+            _ => self.property_data.hpap_monthly_payment(month),
+        }
+    }
+
+    /// HPAP balance after `month` (zero once a refinance pays HPAP off)
+    fn hpap_balance(&self, month: usize, refinance: Option<&RefinancePlan>) -> f64 {
+        match refinance {
+            Some(plan) if plan.pays_off_hpap(&self.property_data) && month >= plan.after_month => {
+                0.0
+            }
+            _ => self.property_data.hpap_balance_after_month(month),
+        }
     }
 
     fn calculate_monthly_rental_costs(&self, year: usize) -> f64 {
@@ -336,15 +388,14 @@ impl WealthAnalysisEngine {
         current_rental_costs: f64,
         running_buy_portfolio: f64,
         running_rent_portfolio: f64,
-        mortgage_calc: &MortgageCalculator,
+        schedule: &LoanSchedule,
+        refinance: Option<&RefinancePlan>,
     ) {
         let year_index = year - 1;
 
         // Calculate equity (net of first mortgage and any outstanding HPAP balance)
-        let remaining_balance = mortgage_calc.calculate_remaining_balance(month);
-        let equity = current_home_value
-            - remaining_balance
-            - self.property_data.hpap_balance_after_month(month);
+        let remaining_balance = schedule.remaining_balance(month);
+        let equity = current_home_value - remaining_balance - self.hpap_balance(month, refinance);
 
         results.buy_cumulative_costs[year_index] = buy_cumulative_cost;
         results.rent_cumulative_costs[year_index] = rent_cumulative_cost;
@@ -417,8 +468,11 @@ mod tests {
     }
 
     fn run(property_data: PropertyData) -> FinancialResults {
-        let mut engine =
-            WealthAnalysisEngine::new(property_data, RentalData::new(), InvestmentParameters::new());
+        let mut engine = WealthAnalysisEngine::new(
+            property_data,
+            RentalData::new(),
+            InvestmentParameters::new(),
+        );
         engine.run_analysis();
         engine.results().expect("Results should be present").clone()
     }
@@ -454,15 +508,19 @@ mod tests {
         let with_hpap = run(with_hpap_data.clone());
 
         // Same down payment = same first mortgage
-        assert_eq!(with_hpap.monthly_mortgage_payment, baseline.monthly_mortgage_payment);
+        assert_eq!(
+            with_hpap.monthly_mortgage_payment,
+            baseline.monthly_mortgage_payment
+        );
         // Less buyer cash, so the renter starts with less invested
         assert!(
             with_hpap.monthly_rent_investment_portfolio[0]
                 < baseline.monthly_rent_investment_portfolio[0]
         );
         // Deferred tier: full HPAP balance comes out of equity
-        let expected_equity_year1 =
-            with_hpap.home_value[0] - with_hpap.mortgage_balance[0] - with_hpap_data.hpap_total_loan();
+        let expected_equity_year1 = with_hpap.home_value[0]
+            - with_hpap.mortgage_balance[0]
+            - with_hpap_data.hpap_total_loan();
         assert!((with_hpap.home_equity[0] - expected_equity_year1).abs() < 1e-6);
     }
 
@@ -486,7 +544,10 @@ mod tests {
         let baseline = run(no_hpap);
 
         // First mortgage is identical, so monthly costs differ only by the HPAP payment
-        assert_eq!(moderate_results.monthly_buy_costs[59], baseline.monthly_buy_costs[59]);
+        assert_eq!(
+            moderate_results.monthly_buy_costs[59],
+            baseline.monthly_buy_costs[59]
+        );
         let diff = moderate_results.monthly_buy_costs[60] - baseline.monthly_buy_costs[60];
         assert!((diff - moderate.hpap_scheduled_payment()).abs() < 1e-6);
         assert!(moderate.hpap_scheduled_payment() > 0.0);
@@ -536,7 +597,10 @@ mod tests {
         twenty_down.down_payment_percent = 20.0;
         let mut no_pmi = twenty_down.clone();
         no_pmi.pmi_rate_percent = 0.0;
-        assert_eq!(run(twenty_down).monthly_buy_costs[0], run(no_pmi).monthly_buy_costs[0]);
+        assert_eq!(
+            run(twenty_down).monthly_buy_costs[0],
+            run(no_pmi).monthly_buy_costs[0]
+        );
 
         // 3% down: PMI applies at rate x loan
         let three_down = PropertyData::new();
@@ -556,32 +620,66 @@ mod tests {
             ("home_equity", &results.home_equity),
             ("home_value", &results.home_value),
             ("mortgage_balance", &results.mortgage_balance),
-            ("buy_investment_portfolio", &results.buy_investment_portfolio),
-            ("rent_investment_portfolio", &results.rent_investment_portfolio),
+            (
+                "buy_investment_portfolio",
+                &results.buy_investment_portfolio,
+            ),
+            (
+                "rent_investment_portfolio",
+                &results.rent_investment_portfolio,
+            ),
             ("buy_total_wealth", &results.buy_total_wealth),
             ("rent_total_wealth", &results.rent_total_wealth),
             ("buy_monthly_costs", &results.buy_monthly_costs),
             ("rent_monthly_costs", &results.rent_monthly_costs),
-            ("monthly_buy_cumulative_costs", &results.monthly_buy_cumulative_costs),
-            ("monthly_rent_cumulative_costs", &results.monthly_rent_cumulative_costs),
-            ("monthly_buy_total_wealth", &results.monthly_buy_total_wealth),
-            ("monthly_rent_total_wealth", &results.monthly_rent_total_wealth),
+            (
+                "monthly_buy_cumulative_costs",
+                &results.monthly_buy_cumulative_costs,
+            ),
+            (
+                "monthly_rent_cumulative_costs",
+                &results.monthly_rent_cumulative_costs,
+            ),
+            (
+                "monthly_buy_total_wealth",
+                &results.monthly_buy_total_wealth,
+            ),
+            (
+                "monthly_rent_total_wealth",
+                &results.monthly_rent_total_wealth,
+            ),
             ("monthly_home_equity", &results.monthly_home_equity),
-            ("monthly_buy_investment_portfolio", &results.monthly_buy_investment_portfolio),
-            ("monthly_rent_investment_portfolio", &results.monthly_rent_investment_portfolio),
+            (
+                "monthly_buy_investment_portfolio",
+                &results.monthly_buy_investment_portfolio,
+            ),
+            (
+                "monthly_rent_investment_portfolio",
+                &results.monthly_rent_investment_portfolio,
+            ),
             ("monthly_buy_costs", &results.monthly_buy_costs),
             ("monthly_rent_costs", &results.monthly_rent_costs),
         ];
         for (name, values) in series {
-            assert!(values.iter().all(|v| v.is_finite()), "{label}: non-finite value in {name}");
+            assert!(
+                values.iter().all(|v| v.is_finite()),
+                "{label}: non-finite value in {name}"
+            );
         }
-        assert!(results.monthly_mortgage_payment.is_finite(), "{label}: mortgage payment");
+        assert!(
+            results.monthly_mortgage_payment.is_finite(),
+            "{label}: mortgage payment"
+        );
     }
+
+    /// A named tweak to the inputs, for scenario sweeps
+    type HpapVariant = (&'static str, fn(&mut PropertyData));
+    type EdgeVariant = (&'static str, fn(&mut PropertyData, &mut RentalData));
 
     #[test]
     fn test_all_presets_valid_and_finite_across_scenarios() {
         // HPAP setups to try on every preset
-        let hpap_variants: [(&str, fn(&mut PropertyData)); 4] = [
+        let hpap_variants: [HpapVariant; 4] = [
             ("hpap off", |_| {}),
             ("hpap own max", |p| {
                 p.enable_hpap = true;
@@ -602,12 +700,14 @@ mod tests {
             }),
         ];
         // Edge-case inputs to try on every preset
-        let edge_variants: [(&str, fn(&mut PropertyData, &mut RentalData)); 9] = [
+        let edge_variants: [EdgeVariant; 11] = [
             ("as preset", |_, _| {}),
             ("0% down", |p, _| p.down_payment_percent = 0.0),
             ("100% down", |p, _| p.down_payment_percent = 100.0),
             ("0% interest", |p, _| p.interest_rate = 0.0),
-            ("negative appreciation", |p, _| p.home_appreciation_rate = -5.0),
+            ("negative appreciation", |p, _| {
+                p.home_appreciation_rate = -5.0
+            }),
             ("0 rent growth", |_, r| r.rent_increase_rate = 0.0),
             ("2 points", |p, _| p.mortgage_points = 2.0),
             ("no tax benefits", |p, _| p.enable_tax_benefits = false),
@@ -615,11 +715,30 @@ mod tests {
                 p.enable_assessment_cap = true;
                 p.assessment_cap_percent = 0.0;
             }),
+            ("refinance 15yr cash costs", |p, _| {
+                p.enable_refinance = true;
+                p.refinance_after_years = 3;
+                p.refinance_term = crate::models::RefinanceTerm::Years15;
+                p.refinance_cost_payment = crate::models::RefinanceCostPayment::PayCash;
+            }),
+            ("refinance year 29", |p, _| {
+                p.enable_refinance = true;
+                p.refinance_after_years = 29;
+                p.refinance_term = crate::models::RefinanceTerm::KeepRemaining;
+            }),
         ];
 
         for preset in CityPreset::all_presets() {
-            assert!(preset.to_property_data().is_valid(), "{}", preset.display_name());
-            assert!(preset.to_rental_data().is_valid(), "{}", preset.display_name());
+            assert!(
+                preset.to_property_data().is_valid(),
+                "{}",
+                preset.display_name()
+            );
+            assert!(
+                preset.to_rental_data().is_valid(),
+                "{}",
+                preset.display_name()
+            );
 
             for (hpap_label, hpap) in hpap_variants {
                 for (edge_label, edge) in edge_variants {
@@ -627,7 +746,12 @@ mod tests {
                     let mut r = preset.to_rental_data();
                     hpap(&mut p);
                     edge(&mut p, &mut r);
-                    let label = format!("{} / {} / {}", preset.display_name(), hpap_label, edge_label);
+                    let label = format!(
+                        "{} / {} / {}",
+                        preset.display_name(),
+                        hpap_label,
+                        edge_label
+                    );
                     let mut engine =
                         WealthAnalysisEngine::new(p, r, preset.to_investment_parameters());
                     engine.run_analysis();
@@ -635,6 +759,80 @@ mod tests {
                 }
             }
         }
+    }
+
+    fn refi_property_data() -> PropertyData {
+        let mut data = PropertyData::new();
+        data.interest_rate = 7.0;
+        data.enable_refinance = true;
+        data.refinance_after_years = 5;
+        data.refinance_rate = 5.0;
+        data
+    }
+
+    #[test]
+    fn test_refinance_lowers_payments_after_refi_month() {
+        let mut no_refi = refi_property_data();
+        no_refi.enable_refinance = false;
+        let base = run(no_refi);
+        let refi = run(refi_property_data());
+
+        // Same until the refinance (closing costs rolled in: no cash that month)
+        assert_eq!(base.monthly_buy_costs[59], refi.monthly_buy_costs[59]);
+        // Lower payment afterwards
+        assert!(refi.monthly_buy_costs[60] < base.monthly_buy_costs[60] - 300.0);
+        assert!(refi.refinance_monthly_payment.unwrap() < refi.monthly_mortgage_payment);
+        assert_eq!(refi.refinance_after_years, Some(5));
+        assert!(base.refinance_monthly_payment.is_none());
+    }
+
+    #[test]
+    fn test_refinance_cash_costs_hit_refi_month() {
+        let mut no_refi = refi_property_data();
+        no_refi.enable_refinance = false;
+        let mut cash = refi_property_data();
+        cash.refinance_cost_payment = crate::models::RefinanceCostPayment::PayCash;
+        let plan = RefinancePlan::from_property_data(&cash).unwrap();
+
+        let base = run(no_refi);
+        let cash_results = run(cash);
+        let extra = cash_results.monthly_buy_costs[59] - base.monthly_buy_costs[59];
+        assert!((extra - plan.cash_due()).abs() < 1e-6);
+        assert!(plan.cash_due() > 0.0);
+    }
+
+    #[test]
+    fn test_refinance_rolls_hpap_into_new_loan() {
+        let mut data = refi_property_data();
+        data.enable_hpap = true;
+        data.hpap_enter_own_max = true;
+        data.hpap_own_max = 60000.0;
+        data.hpap_own_repayment = crate::models::HpapRepayment::FiveYearDeferral40Year;
+        data.down_payment_percent = data.hpap_full_use_down_payment_percent().unwrap();
+        data.hpap_at_refinance = crate::models::HpapAtRefinance::RollIntoLoan;
+        let results = run(data);
+
+        // After the refinance, equity is just value - new mortgage (no separate HPAP lien)
+        for year_index in 5..10 {
+            let expected = results.home_value[year_index] - results.mortgage_balance[year_index];
+            assert!((results.home_equity[year_index] - expected).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_refinance_keeps_hpap_when_approved() {
+        let mut data = refi_property_data();
+        data.enable_hpap = true;
+        data.hpap_enter_own_max = true;
+        data.hpap_own_max = 60000.0;
+        data.down_payment_percent = data.hpap_full_use_down_payment_percent().unwrap();
+        data.hpap_at_refinance = crate::models::HpapAtRefinance::Keep;
+        let hpap_total = data.hpap_total_loan();
+        let results = run(data);
+
+        // HPAP stays as a separate lien after the refinance
+        let expected = results.home_value[9] - results.mortgage_balance[9] - hpap_total;
+        assert!((results.home_equity[9] - expected).abs() < 1e-6);
     }
 
     fn run_with_cg_rate(capital_gains_tax_rate: f64) -> FinancialResults {

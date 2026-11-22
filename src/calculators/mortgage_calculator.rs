@@ -45,13 +45,6 @@ impl MortgageCalculator {
         self.principal * (numerator / denominator)
     }
 
-    /// Calculate total interest paid over life of loan
-    pub fn calculate_total_interest(&self) -> f64 {
-        let monthly_payment = self.calculate_monthly_payment();
-        let num_payments = self.loan_term_years * 12;
-        (monthly_payment * num_payments as f64) - self.principal
-    }
-
     /// Calculate remaining balance at a specific month
     ///
     /// Uses the remaining balance formula:
@@ -85,31 +78,6 @@ impl MortgageCalculator {
         (self.principal * (pow_total - pow_made)) / (pow_total - 1.0)
     }
 
-    /// Calculate equity at a specific month
-    /// Equity = currentHomeValue - remainingBalance
-    ///
-    /// # Arguments
-    /// * `month` - Month number
-    /// * `current_home_value` - Current value of home (with appreciation)
-    pub fn calculate_equity_at_month(&self, month: usize, current_home_value: f64) -> f64 {
-        let remaining_balance = self.calculate_remaining_balance(month);
-        current_home_value - remaining_balance
-    }
-
-    /// Generate full amortization schedule
-    ///
-    /// Returns array of remaining balances for each month (360 months for 30 years)
-    pub fn generate_amortization_schedule(&self) -> Vec<f64> {
-        let total_months = self.loan_term_years * 12;
-        let mut schedule = Vec::with_capacity(total_months);
-
-        for month in 1..=total_months {
-            schedule.push(self.calculate_remaining_balance(month));
-        }
-
-        schedule
-    }
-
     /// Calculate total interest paid in a specific year
     ///
     /// # Arguments
@@ -137,19 +105,6 @@ impl MortgageCalculator {
 
         // Cap interest at monthly payment * 12 (can't pay more interest than total payments)
         total_interest.min(monthly_payment * 12.0)
-    }
-
-    // Getters
-    pub fn principal(&self) -> f64 {
-        self.principal
-    }
-
-    pub fn annual_interest_rate(&self) -> f64 {
-        self.annual_interest_rate
-    }
-
-    pub fn loan_term_years(&self) -> usize {
-        self.loan_term_years
     }
 }
 
@@ -197,47 +152,11 @@ mod tests {
     }
 
     #[test]
-    fn test_total_interest() {
-        let calc = MortgageCalculator::new(100000.0, 5.0, 30);
-        let total_interest = calc.calculate_total_interest();
-
-        // Total interest should be positive
-        assert!(total_interest > 0.0);
-
-        // For a 30-year loan at 5%, total interest should be roughly equal to principal
-        assert!(total_interest > 50000.0 && total_interest < 150000.0);
-    }
-
-    #[test]
-    fn test_equity_calculation() {
-        let calc = MortgageCalculator::new(200000.0, 5.0, 30);
-        let home_value = 220000.0;
-
-        // At month 0, equity = home_value - principal
-        let initial_equity = calc.calculate_equity_at_month(0, home_value);
-        assert_eq!(initial_equity, 20000.0);
-
-        // At month 360, equity = home_value (loan paid off)
-        let final_equity = calc.calculate_equity_at_month(360, home_value);
-        assert!((final_equity - home_value).abs() < 1.0);
-    }
-
-    #[test]
-    fn test_amortization_schedule() {
-        let calc = MortgageCalculator::new(100000.0, 4.0, 30);
-        let schedule = calc.generate_amortization_schedule();
-
-        assert_eq!(schedule.len(), 360);
-
-        // First month balance should be close to principal
-        assert!(schedule[0] > 99000.0);
-
-        // Last month balance should be close to 0
-        assert!(schedule[359] < 100.0);
-
-        // Balance should decrease monotonically
-        for i in 1..schedule.len() {
-            assert!(schedule[i] < schedule[i - 1]);
-        }
+    fn test_interest_outside_loan_term_is_zero() {
+        let calc = MortgageCalculator::new(200000.0, 6.0, 30);
+        assert_eq!(calc.calculate_interest_paid_in_year(0), 0.0);
+        assert_eq!(calc.calculate_interest_paid_in_year(31), 0.0);
+        // Interest falls over time as the balance is paid down
+        assert!(calc.calculate_interest_paid_in_year(1) > calc.calculate_interest_paid_in_year(30));
     }
 }

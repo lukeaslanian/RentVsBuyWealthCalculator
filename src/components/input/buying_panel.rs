@@ -1,9 +1,9 @@
-use crate::calculators::MortgageCalculator;
+use crate::calculators::{MortgageCalculator, RefinancePlan};
 use crate::components::input::DualInputField;
 use crate::models::{
-    hpap_income_limit, salt_cap, FilingStatus, HpapRepayment, PropertyData,
-    HPAP_MAX_CLOSING_COST_ASSISTANCE, HPAP_MAX_GAP_FINANCING, HPAP_MAX_HOUSEHOLD_SIZE,
-    TAX_BASE_YEAR,
+    hpap_income_limit, salt_cap, FilingStatus, HpapAtRefinance, HpapRepayment, PropertyData,
+    RefinanceCostPayment, RefinanceTerm, HPAP_MAX_CLOSING_COST_ASSISTANCE, HPAP_MAX_GAP_FINANCING,
+    HPAP_MAX_HOUSEHOLD_SIZE, TAX_BASE_YEAR,
 };
 use dioxus::prelude::*;
 
@@ -18,6 +18,10 @@ pub fn BuyingInputPanel(
         .hpap_tier()
         .map(|tier| tier.max_gap_financing)
         .unwrap_or(0.0);
+    let hpap_amount_label = format!(
+        "HPAP Amount to Use (max {})",
+        format_currency_input(hpap_max_amount)
+    );
     let (hpap_eligible, hpap_tier_text, hpap_summary, hpap_room_text, hpap_full_percent) = {
         let data = property_data.read();
         match data.hpap_tier() {
@@ -60,7 +64,13 @@ pub fn BuyingInputPanel(
                 } else {
                     String::new()
                 };
-                (true, tier_text, summary, room_text, data.hpap_full_use_down_payment_percent())
+                (
+                    true,
+                    tier_text,
+                    summary,
+                    room_text,
+                    data.hpap_full_use_down_payment_percent(),
+                )
             }
             None => {
                 let tier_text = if data.hpap_enter_own_max {
@@ -87,6 +97,47 @@ pub fn BuyingInputPanel(
     } else {
         "Percentage of home price paid upfront (e.g., 3% or 20%)"
     };
+
+    // Refinance summary for the current inputs
+    let refinance_summary = {
+        let data = property_data.read();
+        RefinancePlan::from_property_data(&data).map(|plan| {
+            let mut parts = vec![format!(
+                "After year {}: {} balance",
+                plan.after_month / 12,
+                format_currency_input(plan.old_balance)
+            )];
+            if plan.hpap_rolled_in > 0.0 {
+                parts.push(format!(
+                    "+ {} HPAP",
+                    format_currency_input(plan.hpap_rolled_in)
+                ));
+            }
+            if plan.costs_rolled_in > 0.0 {
+                parts.push(format!(
+                    "+ {} closing costs",
+                    format_currency_input(plan.costs_rolled_in)
+                ));
+            }
+            let mut text = format!(
+                "{} → new loan {} at {:.2}% for {} years. Payment {} → {}/mo.",
+                parts.join(" "),
+                format_currency_input(plan.new_principal),
+                plan.new_rate,
+                plan.new_term_years,
+                format_currency_input(plan.old_payment),
+                format_currency_input(plan.new_payment),
+            );
+            if plan.cash_due() > 0.0 {
+                text.push_str(&format!(
+                    " Cash due at refinance: {}.",
+                    format_currency_input(plan.cash_due())
+                ));
+            }
+            text
+        })
+    };
+    let keep_remaining_years = 30usize.saturating_sub(property_data.read().refinance_after_years);
 
     // SALT cap note for the first analysis year (depends on income)
     let salt_note = {
@@ -653,22 +704,48 @@ pub fn BuyingInputPanel(
                                 }
                             }
 
+                            // Tier / eligibility: the maximum, shown before choosing how much to use
+                            p { class: if hpap_eligible {
+                                    if dark_mode { "text-xs text-monokai-fg" } else { "text-xs text-monokaiLight-fg" }
+                                } else {
+                                    if dark_mode { "text-xs text-monokai-red" } else { "text-xs text-monokaiLight-red" }
+                                },
+                                "{hpap_tier_text}"
+                            }
+
                             // How much of the maximum to use (sets the total down payment)
                             if hpap_eligible {
-                                InputField {
-                                    label: "HPAP Amount to Use ($)",
-                                    value: property_data.read().hpap_gap_financing(),
-                                    onchange: move |v| {
-                                        let percent = property_data.read().hpap_down_payment_percent_for(v);
-                                        if let Some(percent) = percent {
-                                            let mut data = property_data.write();
-                                            data.down_payment_percent = percent;
+                                // Amount field with the "Use full HPAP" button beside it
+                                div { class: "flex items-start gap-2",
+                                    div { class: "flex-1",
+                                        InputField {
+                                            label: hpap_amount_label.clone(),
+                                            value: property_data.read().hpap_gap_financing(),
+                                            onchange: move |v| {
+                                                let percent = property_data.read().hpap_down_payment_percent_for(v);
+                                                if let Some(percent) = percent {
+                                                    let mut data = property_data.write();
+                                                    data.down_payment_percent = percent;
+                                                }
+                                            },
+                                            tooltip: "How much of your HPAP maximum to borrow (0% interest). Your total down payment is set to this amount plus your own contribution. Using more HPAP means a smaller bank mortgage.",
+                                            min: Some(0.0),
+                                            max: Some(hpap_max_amount),
+                                            dark_mode: dark_mode,
                                         }
-                                    },
-                                    tooltip: "How much of your HPAP maximum to borrow (0% interest). Your total down payment is set to this amount plus your own contribution. Using more HPAP means a smaller bank mortgage.",
-                                    min: Some(0.0),
-                                    max: Some(hpap_max_amount),
-                                    dark_mode: dark_mode,
+                                    }
+                                    if let Some(percent) = hpap_full_percent.filter(|_| !hpap_room_text.is_empty()) {
+                                        button {
+                                            r#type: "button",
+                                            // Same box as the input: label offset (mt-6), padding, text size and border
+                                            class: "mt-6 px-3 py-2 border border-transparent text-base font-medium rounded-md shadow-sm bg-monokai-purple text-white hover:opacity-90 transition-opacity whitespace-nowrap",
+                                            onclick: move |_| {
+                                                let mut data = property_data.write();
+                                                data.down_payment_percent = percent;
+                                            },
+                                            "Use full HPAP"
+                                        }
+                                    }
                                 }
                             }
 
@@ -685,15 +762,6 @@ pub fn BuyingInputPanel(
                                 dark_mode: dark_mode,
                             }
 
-                            // Tier / eligibility
-                            p { class: if hpap_eligible {
-                                    if dark_mode { "text-xs text-monokai-fg" } else { "text-xs text-monokaiLight-fg" }
-                                } else {
-                                    if dark_mode { "text-xs text-monokai-red" } else { "text-xs text-monokaiLight-red" }
-                                },
-                                "{hpap_tier_text}"
-                            }
-
                             if hpap_eligible {
                                 p { class: if dark_mode { "text-xs text-monokai-fgMuted" } else { "text-xs text-monokaiLight-fgMuted" },
                                     "{hpap_summary}"
@@ -701,26 +769,201 @@ pub fn BuyingInputPanel(
                             }
 
                             if !hpap_room_text.is_empty() {
-                                div { class: "flex flex-wrap items-center gap-2",
-                                    p { class: if dark_mode { "text-xs text-monokai-fgMuted" } else { "text-xs text-monokaiLight-fgMuted" },
-                                        "{hpap_room_text}"
-                                    }
-                                    if let Some(percent) = hpap_full_percent {
-                                        button {
-                                            r#type: "button",
-                                            class: "px-3 py-1 text-xs font-medium rounded-md bg-monokai-purple text-white hover:opacity-90 transition-opacity",
-                                            onclick: move |_| {
-                                                let mut data = property_data.write();
-                                                data.down_payment_percent = percent;
-                                            },
-                                            "Use full HPAP"
-                                        }
-                                    }
+                                p { class: if dark_mode { "text-xs text-monokai-fgMuted" } else { "text-xs text-monokaiLight-fgMuted" },
+                                    "{hpap_room_text}"
                                 }
                             }
 
                             p { class: if dark_mode { "text-xs text-monokai-fgDim italic" } else { "text-xs text-monokaiLight-fgDim italic" },
                                 "Note: HPAP is a 0% loan, due in full when you sell, refinance, or stop living there (the model assumes you stay and don't refinance). You must be a first-time buyer (no home ownership in the last 3 years), live in the DC home as your primary residence, and have good credit. Funding is limited each year; confirm with DC DHCD."
+                            }
+                        }
+                    }
+                }
+
+                // Refinance Section
+                div { class: if dark_mode { "border-t border-monokai-bgLighter pt-4 mt-4" } else { "border-t border-monokaiLight-border pt-4 mt-4" },
+                    div { class: "flex items-center justify-between mb-3",
+                        div {
+                            label { class: if dark_mode { "text-sm font-medium text-monokai-fg" } else { "text-sm font-medium text-monokaiLight-fg" },
+                                "Refinance"
+                            }
+                            p { class: if dark_mode { "text-xs text-monokai-fgMuted" } else { "text-xs text-monokaiLight-fgMuted" },
+                                "Switch to a new rate and term later (no cash-out)"
+                            }
+                        }
+                        button {
+                            r#type: "button",
+                            class: if property_data.read().enable_refinance {
+                                "relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full bg-monokai-purple transition-colors"
+                            } else if dark_mode {
+                                "relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full bg-monokai-bgLighter transition-colors"
+                            } else {
+                                "relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full bg-monokaiLight-border transition-colors"
+                            },
+                            onclick: move |_| {
+                                let mut data = property_data.write();
+                                data.enable_refinance = !data.enable_refinance;
+                            },
+                            span {
+                                class: if property_data.read().enable_refinance {
+                                    "inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-6"
+                                } else {
+                                    "inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1"
+                                },
+                            }
+                        }
+                    }
+
+                    if property_data.read().enable_refinance {
+                        div { class: if dark_mode { "bg-monokai-bgLighter rounded-lg p-4 space-y-3" } else { "bg-monokaiLight-bg rounded-lg p-4 space-y-3" },
+                            div {
+                                label { class: if dark_mode { "block text-sm font-medium text-monokai-fgMuted mb-1" } else { "block text-sm font-medium text-monokaiLight-fgMuted mb-1" },
+                                    "Refinance After Year"
+                                }
+                                select {
+                                    class: if dark_mode {
+                                        "w-full px-3 py-2 border border-monokai-border bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-blue focus:border-monokai-blue"
+                                    } else {
+                                        "w-full px-3 py-2 border border-monokaiLight-border bg-monokaiLight-bg text-monokaiLight-fg rounded-md shadow-sm focus:ring-monokaiLight-blue focus:border-monokaiLight-blue"
+                                    },
+                                    value: "{property_data.read().refinance_after_years}",
+                                    onchange: move |evt| {
+                                        if let Ok(n) = evt.value().parse::<usize>() {
+                                            let mut data = property_data.write();
+                                            data.refinance_after_years = n.clamp(1, 29);
+                                        }
+                                    },
+                                    for n in 1..=29usize {
+                                        option { value: "{n}", selected: n == property_data.read().refinance_after_years, "{n}" }
+                                    }
+                                }
+                            }
+
+                            InputField {
+                                label: "New Interest Rate (%)",
+                                percent: true,
+                                value: property_data.read().refinance_rate,
+                                onchange: move |v| {
+                                    let mut data = property_data.write();
+                                    data.refinance_rate = v;
+                                },
+                                tooltip: "Interest rate on the new loan",
+                                min: Some(0.0),
+                                max: Some(20.0),
+                                min_exclusive: true,
+                                max_exclusive: true,
+                                dark_mode: dark_mode,
+                            }
+
+                            div {
+                                label { class: if dark_mode { "block text-sm font-medium text-monokai-fgMuted mb-1" } else { "block text-sm font-medium text-monokaiLight-fgMuted mb-1" },
+                                    "New Loan Term"
+                                }
+                                select {
+                                    class: if dark_mode {
+                                        "w-full px-3 py-2 border border-monokai-border bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-blue focus:border-monokai-blue"
+                                    } else {
+                                        "w-full px-3 py-2 border border-monokaiLight-border bg-monokaiLight-bg text-monokaiLight-fg rounded-md shadow-sm focus:ring-monokaiLight-blue focus:border-monokaiLight-blue"
+                                    },
+                                    value: match property_data.read().refinance_term {
+                                        RefinanceTerm::KeepRemaining => "keep",
+                                        RefinanceTerm::Years30 => "30",
+                                        RefinanceTerm::Years20 => "20",
+                                        RefinanceTerm::Years15 => "15",
+                                    },
+                                    onchange: move |evt| {
+                                        let mut data = property_data.write();
+                                        data.refinance_term = match evt.value().as_str() {
+                                            "keep" => RefinanceTerm::KeepRemaining,
+                                            "20" => RefinanceTerm::Years20,
+                                            "15" => RefinanceTerm::Years15,
+                                            _ => RefinanceTerm::Years30,
+                                        };
+                                    },
+                                    option { value: "30", "New 30-year loan" }
+                                    option { value: "20", "New 20-year loan" }
+                                    option { value: "15", "New 15-year loan" }
+                                    option { value: "keep", "Keep remaining term ({keep_remaining_years} years)" }
+                                }
+                            }
+
+                            InputField {
+                                label: "Refinance Closing Costs (% of loan)",
+                                percent: true,
+                                value: property_data.read().refinance_closing_cost_percent,
+                                onchange: move |v| {
+                                    let mut data = property_data.write();
+                                    data.refinance_closing_cost_percent = v;
+                                },
+                                tooltip: "Lender, title and appraisal fees, as a % of the new loan (typically 2-3%)",
+                                min: Some(0.0),
+                                max: Some(10.0),
+                                dark_mode: dark_mode,
+                            }
+
+                            div {
+                                label { class: if dark_mode { "block text-sm font-medium text-monokai-fgMuted mb-1" } else { "block text-sm font-medium text-monokaiLight-fgMuted mb-1" },
+                                    "Pay Closing Costs"
+                                }
+                                select {
+                                    class: if dark_mode {
+                                        "w-full px-3 py-2 border border-monokai-border bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-blue focus:border-monokai-blue"
+                                    } else {
+                                        "w-full px-3 py-2 border border-monokaiLight-border bg-monokaiLight-bg text-monokaiLight-fg rounded-md shadow-sm focus:ring-monokaiLight-blue focus:border-monokaiLight-blue"
+                                    },
+                                    value: if property_data.read().refinance_cost_payment == RefinanceCostPayment::PayCash { "cash" } else { "roll" },
+                                    onchange: move |evt| {
+                                        let mut data = property_data.write();
+                                        data.refinance_cost_payment = if evt.value() == "cash" {
+                                            RefinanceCostPayment::PayCash
+                                        } else {
+                                            RefinanceCostPayment::RollIntoLoan
+                                        };
+                                    },
+                                    option { value: "roll", "Roll into the new loan" }
+                                    option { value: "cash", "Pay in cash" }
+                                }
+                            }
+
+                            if property_data.read().enable_hpap {
+                                div {
+                                    label { class: if dark_mode { "block text-sm font-medium text-monokai-fgMuted mb-1" } else { "block text-sm font-medium text-monokaiLight-fgMuted mb-1" },
+                                        "HPAP at Refinance"
+                                    }
+                                    select {
+                                        class: if dark_mode {
+                                        "w-full px-3 py-2 border border-monokai-border bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-blue focus:border-monokai-blue"
+                                    } else {
+                                        "w-full px-3 py-2 border border-monokaiLight-border bg-monokaiLight-bg text-monokaiLight-fg rounded-md shadow-sm focus:ring-monokaiLight-blue focus:border-monokaiLight-blue"
+                                    },
+                                        value: match property_data.read().hpap_at_refinance {
+                                            HpapAtRefinance::RollIntoLoan => "roll",
+                                            HpapAtRefinance::PayCash => "cash",
+                                            HpapAtRefinance::Keep => "keep",
+                                        },
+                                        onchange: move |evt| {
+                                            let mut data = property_data.write();
+                                            data.hpap_at_refinance = match evt.value().as_str() {
+                                                "cash" => HpapAtRefinance::PayCash,
+                                                "keep" => HpapAtRefinance::Keep,
+                                                _ => HpapAtRefinance::RollIntoLoan,
+                                            };
+                                        },
+                                        option { value: "roll", "Roll into the new loan (starts costing interest)" }
+                                        option { value: "cash", "Pay it off in cash" }
+                                        option { value: "keep", "Keep it (DHCD approves)" }
+                                    }
+                                    p { class: if dark_mode { "text-xs text-monokai-fgDim italic mt-1" } else { "text-xs text-monokaiLight-fgDim italic mt-1" },
+                                        "DHCD makes HPAP due on refinance unless it approves keeping it in place."
+                                    }
+                                }
+                            }
+
+                            if let Some(summary) = refinance_summary.clone() {
+                                p { class: if dark_mode { "text-xs text-monokai-fgMuted" } else { "text-xs text-monokaiLight-fgMuted" },
+                                    "{summary}"
+                                }
                             }
                         }
                     }
@@ -961,11 +1204,12 @@ fn InputField(
     #[props(default = false)] min_exclusive: bool,
     #[props(default = false)] max_exclusive: bool,
     /// Show and parse the value as a percentage ("10.00%") instead of currency ("$10.00")
-    #[props(default = false)] percent: bool,
+    #[props(default = false)]
+    percent: bool,
     #[props(default = false)] dark_mode: bool,
 ) -> Element {
     let mut is_focused = use_signal(|| false);
-    let mut input_text = use_signal(|| String::new());
+    let mut input_text = use_signal(String::new);
 
     // Validate the value
     let is_valid = {
@@ -975,10 +1219,8 @@ fn InputField(
                 if value <= min_val {
                     valid = false;
                 }
-            } else {
-                if value < min_val {
-                    valid = false;
-                }
+            } else if value < min_val {
+                valid = false;
             }
         }
         if let Some(max_val) = max {
@@ -986,10 +1228,8 @@ fn InputField(
                 if value >= max_val {
                     valid = false;
                 }
-            } else {
-                if value > max_val {
-                    valid = false;
-                }
+            } else if value > max_val {
+                valid = false;
             }
         }
         valid
@@ -1082,7 +1322,7 @@ fn InterestRateField(
     #[props(default = false)] dark_mode: bool,
 ) -> Element {
     let mut is_focused = use_signal(|| false);
-    let mut input_text = use_signal(|| String::new());
+    let mut input_text = use_signal(String::new);
 
     let value = property_data.read().interest_rate;
     let is_valid = value > 0.0 && value < 20.0;

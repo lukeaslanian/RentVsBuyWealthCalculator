@@ -37,6 +37,9 @@ pub struct FinancialResults {
     pub all_break_even_years: Vec<usize>, // All crossover years
     pub break_even_description: String,   // Human-readable description
     pub monthly_mortgage_payment: f64,
+    /// New monthly payment after a refinance, and the year it starts after (if refinancing)
+    pub refinance_monthly_payment: Option<f64>,
+    pub refinance_after_years: Option<usize>,
 }
 
 impl FinancialResults {
@@ -69,28 +72,9 @@ impl FinancialResults {
             all_break_even_years: Vec::new(),
             break_even_description: String::from("Not calculated"),
             monthly_mortgage_payment: 0.0,
+            refinance_monthly_payment: None,
+            refinance_after_years: None,
         }
-    }
-
-    /// Get buyer's wealth at a specific year
-    pub fn buy_wealth_at_year(&self, year: usize) -> f64 {
-        if year < 1 || year > self.buy_total_wealth.len() {
-            return 0.0;
-        }
-        self.buy_total_wealth[year - 1]
-    }
-
-    /// Get renter's wealth at a specific year
-    pub fn rent_wealth_at_year(&self, year: usize) -> f64 {
-        if year < 1 || year > self.rent_total_wealth.len() {
-            return 0.0;
-        }
-        self.rent_total_wealth[year - 1]
-    }
-
-    /// Get wealth difference at a specific year
-    pub fn wealth_difference_at_year(&self, year: usize) -> f64 {
-        self.buy_wealth_at_year(year) - self.rent_wealth_at_year(year)
     }
 
     /// Determine the winner
@@ -111,30 +95,6 @@ impl FinancialResults {
             String::from("TIE!")
         }
     }
-
-    /// Check if there's a break-even point
-    pub fn has_break_even_point(&self) -> bool {
-        self.break_even_year.is_some()
-    }
-
-    /// Get maximum wealth across all scenarios
-    pub fn get_max_wealth(&self) -> f64 {
-        let mut max = 0.0;
-
-        for &wealth in &self.buy_total_wealth {
-            if wealth > max {
-                max = wealth;
-            }
-        }
-
-        for &wealth in &self.rent_total_wealth {
-            if wealth > max {
-                max = wealth;
-            }
-        }
-
-        max
-    }
 }
 
 #[cfg(test)]
@@ -150,17 +110,6 @@ mod tests {
     }
 
     #[test]
-    fn test_wealth_at_year() {
-        let mut results = FinancialResults::new(30);
-        results.buy_total_wealth[0] = 10000.0;
-        results.rent_total_wealth[0] = 8000.0;
-
-        assert_eq!(results.buy_wealth_at_year(1), 10000.0);
-        assert_eq!(results.rent_wealth_at_year(1), 8000.0);
-        assert_eq!(results.wealth_difference_at_year(1), 2000.0);
-    }
-
-    #[test]
     fn test_get_winner() {
         let mut results = FinancialResults::new(30);
         results.buy_total_wealth[29] = 500000.0;
@@ -173,11 +122,12 @@ mod tests {
     }
 
     #[test]
-    fn test_max_wealth() {
+    fn test_get_winner_tie_and_no_data() {
         let mut results = FinancialResults::new(30);
-        results.buy_total_wealth[10] = 250000.0;
-        results.rent_total_wealth[15] = 300000.0;
+        results.buy_total_wealth[29] = 500000.0;
+        results.rent_total_wealth[29] = 500000.0;
+        assert_eq!(results.get_winner(), "TIE!");
 
-        assert_eq!(results.get_max_wealth(), 300000.0);
+        assert_eq!(FinancialResults::new(0).get_winner(), "No data");
     }
 }

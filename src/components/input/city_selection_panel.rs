@@ -67,32 +67,58 @@ mod tests {
     /// selection "custom"; add new preset fields here when adding them to CityPreset.
     const PRESET_FIELD_EDITS: &[(&str, Edit)] = &[
         ("home_price", |p, _, _| p.home_price += 1000.0),
-        ("down_payment_percent", |p, _, _| p.down_payment_percent += 1.0),
+        ("down_payment_percent", |p, _, _| {
+            p.down_payment_percent += 1.0
+        }),
         ("interest_rate", |p, _, _| p.interest_rate += 0.5),
         ("property_tax_rate", |p, _, _| p.property_tax_rate += 0.1),
-        ("enable_assessment_cap", |p, _, _| p.enable_assessment_cap = !p.enable_assessment_cap),
-        ("home_insurance_annual", |p, _, _| p.home_insurance_annual += 100.0),
-        ("maintenance_percent", |p, _, _| p.maintenance_percent += 0.5),
+        ("enable_assessment_cap", |p, _, _| {
+            p.enable_assessment_cap = !p.enable_assessment_cap
+        }),
+        ("home_insurance_annual", |p, _, _| {
+            p.home_insurance_annual += 100.0
+        }),
+        ("maintenance_percent", |p, _, _| {
+            p.maintenance_percent += 0.5
+        }),
         ("hoa_fee", |p, _, _| p.hoa_fee += 10.0),
-        ("non_included_utilities", |p, _, _| p.non_included_utilities += 10.0),
+        ("non_included_utilities", |p, _, _| {
+            p.non_included_utilities += 10.0
+        }),
         ("lender_grant", |p, _, _| p.lender_grant += 1000.0),
-        ("closing_costs_percent_purchase", |p, _, _| p.closing_costs_percent_purchase += 0.5),
-        ("seller_closing_assistance", |p, _, _| p.seller_closing_assistance += 1000.0),
-        ("closing_costs_percent_sale", |p, _, _| p.closing_costs_percent_sale += 0.5),
-        ("home_appreciation_rate", |p, _, _| p.home_appreciation_rate += 0.5),
+        ("closing_costs_percent_purchase", |p, _, _| {
+            p.closing_costs_percent_purchase += 0.5
+        }),
+        ("seller_closing_assistance", |p, _, _| {
+            p.seller_closing_assistance += 1000.0
+        }),
+        ("closing_costs_percent_sale", |p, _, _| {
+            p.closing_costs_percent_sale += 0.5
+        }),
+        ("home_appreciation_rate", |p, _, _| {
+            p.home_appreciation_rate += 0.5
+        }),
         ("pmi_rate_percent", |p, _, _| p.pmi_rate_percent += 0.1),
-        ("state_income_tax_rate", |p, _, _| p.state_income_tax_rate += 0.5),
+        ("state_income_tax_rate", |p, _, _| {
+            p.state_income_tax_rate += 0.5
+        }),
         ("monthly_rent", |_, r, _| r.monthly_rent += 50.0),
         ("amenity_fees", |_, r, _| r.amenity_fees += 10.0),
-        ("rent_included_utilities", |_, r, _| r.rent_included_utilities += 10.0),
-        ("rent_non_included_utilities", |_, r, _| r.rent_non_included_utilities += 10.0),
+        ("rent_included_utilities", |_, r, _| {
+            r.rent_included_utilities += 10.0
+        }),
+        ("rent_non_included_utilities", |_, r, _| {
+            r.rent_non_included_utilities += 10.0
+        }),
         ("renters_insurance", |_, r, _| r.renters_insurance += 5.0),
         ("rent_increase_rate", |_, r, _| r.rent_increase_rate += 0.5),
         ("security_deposit", |_, r, _| r.security_deposit += 100.0),
         ("annual_return_rate", |_, _, i| i.annual_return_rate += 0.5),
         ("analysis_years", |_, _, i| i.analysis_years = 20),
         ("inflation_rate", |_, _, i| i.inflation_rate += 0.5),
-        ("capital_gains_tax_rate", |_, _, i| i.capital_gains_tax_rate += 5.0),
+        ("capital_gains_tax_rate", |_, _, i| {
+            i.capital_gains_tax_rate += 5.0
+        }),
     ];
 
     #[test]
@@ -103,7 +129,11 @@ mod tests {
                 preset.to_rental_data(),
                 preset.to_investment_parameters(),
             );
-            assert!(matches_preset(&p, &r, &i, &preset), "{}", preset.display_name());
+            assert!(
+                matches_preset(&p, &r, &i, &preset),
+                "{}",
+                preset.display_name()
+            );
         }
     }
 
@@ -150,14 +180,14 @@ pub fn CitySelectionPanel(
     let mut selected_city = use_signal(|| "-- Select --".to_string());
     let mut selected_bedrooms = use_signal(|| "-- Select --".to_string());
 
-    let cities = vec![
+    let cities = [
         "-- Select --",
         "Washington DC",
         "Boston",
         "New York City",
         "San Francisco",
     ];
-    let bedroom_options = vec!["-- Select --", "Studio", "1BR", "2BR", "3BR"];
+    let bedroom_options = ["-- Select --", "Studio", "1BR", "2BR", "3BR"];
 
     // Check if current data matches the selected preset
     let current_matches_preset = use_memo(move || {

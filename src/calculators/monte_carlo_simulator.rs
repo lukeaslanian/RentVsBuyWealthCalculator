@@ -249,19 +249,37 @@ mod tests {
 
             assert_eq!(results.buy_final_wealth.len(), 200, "{name}");
             assert!(results.buy_wins + results.rent_wins <= 200, "{name}");
-            assert!((0.0..=100.0).contains(&results.buy_win_percentage()), "{name}");
             assert!(
-                results.buy_final_wealth.iter().chain(&results.rent_final_wealth).all(|v| v.is_finite()),
+                (0.0..=100.0).contains(&results.buy_win_percentage()),
+                "{name}"
+            );
+            assert!(
+                results
+                    .buy_final_wealth
+                    .iter()
+                    .chain(&results.rent_final_wealth)
+                    .all(|v| v.is_finite()),
                 "{name}: non-finite wealth"
             );
             // Percentiles are ordered and the average sits within the range
-            assert!(results.buy_wealth_p10() <= results.buy_wealth_p90(), "{name}");
-            assert!(results.rent_wealth_p10() <= results.rent_wealth_p90(), "{name}");
+            assert!(
+                results.buy_wealth_p10() <= results.buy_wealth_p90(),
+                "{name}"
+            );
+            assert!(
+                results.rent_wealth_p10() <= results.rent_wealth_p90(),
+                "{name}"
+            );
             let (min, max) = results
                 .buy_final_wealth
                 .iter()
-                .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &v| (lo.min(v), hi.max(v)));
-            assert!(results.avg_buy_wealth() >= min && results.avg_buy_wealth() <= max, "{name}");
+                .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &v| {
+                    (lo.min(v), hi.max(v))
+                });
+            assert!(
+                results.avg_buy_wealth() >= min && results.avg_buy_wealth() <= max,
+                "{name}"
+            );
         }
     }
 
@@ -319,5 +337,33 @@ mod tests {
         assert!((percentile(&data, 10.0) - 2.0).abs() < 0.01);
         assert!((percentile(&data, 50.0) - 5.0).abs() < 1.01); // 4.5 rounds to 5, data[5] = 6.0, close to 5
         assert!((percentile(&data, 90.0) - 9.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_percentiles_of_empty_results() {
+        let results = SimulationResults {
+            num_simulations: 0,
+            buy_wins: 0,
+            rent_wins: 0,
+            buy_final_wealth: vec![],
+            rent_final_wealth: vec![],
+        };
+        assert_eq!(results.buy_wealth_p10(), 0.0);
+        assert_eq!(results.rent_wealth_p90(), 0.0);
+    }
+
+    #[test]
+    fn test_percentiles_are_ordered_values_from_the_data() {
+        let values: Vec<f64> = (1..=100).map(|v| v as f64).collect();
+        let results = SimulationResults {
+            num_simulations: 100,
+            buy_wins: 50,
+            rent_wins: 50,
+            buy_final_wealth: values.clone(),
+            rent_final_wealth: values,
+        };
+        let (p10, p90) = (results.buy_wealth_p10(), results.buy_wealth_p90());
+        assert!((9.0..=11.0).contains(&p10), "p10 = {p10}");
+        assert!((89.0..=91.0).contains(&p90), "p90 = {p90}");
     }
 }

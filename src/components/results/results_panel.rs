@@ -135,8 +135,18 @@ pub fn ResultsPanel(
             // Key Metrics with icons
             div { class: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4",
                 MetricCard {
-                    label: "Monthly Mortgage",
-                    value: CurrencyFormatter::format_currency(results.monthly_mortgage_payment),
+                    label: match results.refinance_after_years {
+                        Some(years) => format!("Monthly Mortgage (refi after year {years})"),
+                        None => "Monthly Mortgage".to_string(),
+                    },
+                    value: match results.refinance_monthly_payment {
+                        Some(new_payment) => format!(
+                            "{} → {}",
+                            CurrencyFormatter::format_currency(results.monthly_mortgage_payment),
+                            CurrencyFormatter::format_currency(new_payment)
+                        ),
+                        None => CurrencyFormatter::format_currency(results.monthly_mortgage_payment),
+                    },
                     icon: "fa-solid fa-money-bill-wave",
                     dark_mode: dark_mode,
                 }

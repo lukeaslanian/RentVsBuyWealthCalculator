@@ -214,7 +214,7 @@ fn InputField(
     #[props(default = false)] dark_mode: bool,
 ) -> Element {
     let mut is_focused = use_signal(|| false);
-    let mut input_text = use_signal(|| String::new());
+    let mut input_text = use_signal(String::new);
 
     // Validate the value
     let is_valid = {
@@ -224,10 +224,8 @@ fn InputField(
                 if value <= min_val {
                     valid = false;
                 }
-            } else {
-                if value < min_val {
-                    valid = false;
-                }
+            } else if value < min_val {
+                valid = false;
             }
         }
         if let Some(max_val) = max {
@@ -235,10 +233,8 @@ fn InputField(
                 if value >= max_val {
                     valid = false;
                 }
-            } else {
-                if value > max_val {
-                    valid = false;
-                }
+            } else if value > max_val {
+                valid = false;
             }
         }
         valid

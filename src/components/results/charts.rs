@@ -32,7 +32,7 @@ fn get_chart_width() -> u32 {
                 window_width.saturating_sub(80).max(350)
             } else {
                 // Desktop: 2-column grid, so roughly half width minus gaps
-                ((window_width - 120) / 2).min(550).max(350)
+                ((window_width - 120) / 2).clamp(350, 550)
             }
         })
         .unwrap_or(300)
@@ -166,7 +166,7 @@ fn CharmingLineChart(
         };
 
         let num_points = dataset1.len().min(dataset2.len());
-        let num_years = (num_points + 11) / 12;
+        let num_years = num_points.div_ceil(12);
 
         // Create x-axis labels (years)
         let x_labels: Vec<String> = (0..=num_years).map(|y| format!("{}", y)).collect();
@@ -342,7 +342,7 @@ fn CharmingStackedAreaChart(
         };
 
         let num_points = dataset1.len().min(dataset2.len());
-        let num_years = (num_points + 11) / 12;
+        let num_years = num_points.div_ceil(12);
 
         // Create x-axis labels (years)
         let x_labels: Vec<String> = (0..=num_years).map(|y| format!("{}", y)).collect();

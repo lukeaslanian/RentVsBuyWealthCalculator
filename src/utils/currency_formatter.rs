@@ -45,20 +45,6 @@ impl CurrencyFormatter {
         let value = cleaned.parse::<f64>().ok()?;
         value.is_finite().then_some(value)
     }
-
-    /// Parse a string value to f64, handling currency symbols and commas
-    pub fn parse_value(text: &str) -> f64 {
-        text.replace('$', "")
-            .replace(',', "")
-            .trim()
-            .parse()
-            .unwrap_or(0.0)
-    }
-
-    /// Format a percentage value (e.g., "5.25%")
-    pub fn format_percent(value: f64) -> String {
-        format!("{:.2}%", value)
-    }
 }
 
 #[cfg(test)]
@@ -73,7 +59,10 @@ mod tests {
         assert_eq!(CurrencyFormatter::parse_input("10%"), Some(10.0));
         assert_eq!(CurrencyFormatter::parse_input("5.99 %"), Some(5.99));
         assert_eq!(CurrencyFormatter::parse_input("-5"), Some(-5.0));
-        assert_eq!(CurrencyFormatter::parse_input("1,000,000"), Some(1_000_000.0));
+        assert_eq!(
+            CurrencyFormatter::parse_input("1,000,000"),
+            Some(1_000_000.0)
+        );
         assert_eq!(CurrencyFormatter::parse_input(".5"), Some(0.5));
         // Not numbers: leave the field unchanged
         assert_eq!(CurrencyFormatter::parse_input(""), None);
@@ -99,20 +88,10 @@ mod tests {
         assert_eq!(CurrencyFormatter::format_currency(-1234.56), "-$1,234.56");
         assert_eq!(CurrencyFormatter::format_currency(368487.38), "$368,487.38");
         // Values just under a whole dollar round up and carry (no "$7,999.100")
-        assert_eq!(CurrencyFormatter::format_currency(7999.999999999), "$8,000.00");
+        assert_eq!(
+            CurrencyFormatter::format_currency(7999.999999999),
+            "$8,000.00"
+        );
         assert_eq!(CurrencyFormatter::format_currency(0.999), "$1.00");
-    }
-
-    #[test]
-    fn test_parse_value() {
-        assert_eq!(CurrencyFormatter::parse_value("$1,234.56"), 1234.56);
-        assert_eq!(CurrencyFormatter::parse_value("1234.56"), 1234.56);
-        assert_eq!(CurrencyFormatter::parse_value("1,234"), 1234.0);
-    }
-
-    #[test]
-    fn test_format_percent() {
-        assert_eq!(CurrencyFormatter::format_percent(5.25), "5.25%");
-        assert_eq!(CurrencyFormatter::format_percent(100.0), "100.00%");
     }
 }

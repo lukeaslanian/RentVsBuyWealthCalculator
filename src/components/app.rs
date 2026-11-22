@@ -8,9 +8,9 @@ use dioxus::prelude::*;
 #[component]
 pub fn App() -> Element {
     // State
-    let mut property_data = use_signal(|| PropertyData::new());
-    let mut rental_data = use_signal(|| RentalData::new());
-    let mut investment_params = use_signal(|| InvestmentParameters::new());
+    let mut property_data = use_signal(PropertyData::new);
+    let mut rental_data = use_signal(RentalData::new);
+    let mut investment_params = use_signal(InvestmentParameters::new);
     let mut results = use_signal(|| None::<FinancialResults>);
     let mut active_tab = use_signal(|| 0);
     let mut error_message = use_signal(|| None::<String>);

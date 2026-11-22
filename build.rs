@@ -17,7 +17,9 @@ fn fetch_current_mortgage_rate() -> Option<(f64, String)> {
 
     // The key comes only from the environment (GitHub Actions secret in CI, or an
     // exported variable locally). Without it, the build uses the fallback rate.
-    let api_key = env::var("FRED_API_KEY").ok().filter(|k| !k.trim().is_empty())?;
+    let api_key = env::var("FRED_API_KEY")
+        .ok()
+        .filter(|k| !k.trim().is_empty())?;
 
     let url = format!(
         "https://api.stlouisfed.org/fred/series/observations?series_id=MORTGAGE30US&api_key={}&file_type=json&limit=1&sort_order=desc",
@@ -50,8 +52,10 @@ fn build_tailwind_css() {
 
     let status = std::process::Command::new(binary)
         .args([
-            "-i", "./assets/input.css",
-            "-o", "./assets/tailwind.css",
+            "-i",
+            "./assets/input.css",
+            "-o",
+            "./assets/tailwind.css",
             "--minify",
         ])
         .status();

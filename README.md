@@ -37,7 +37,7 @@ Monte Carlo Panel:
 
 ## Tax Benefits
 
-The calculator includes US tax benefit calculations following current tax law (2025), **enabled by default**:
+The calculator includes US tax benefit calculations following current tax law, **enabled by default**:
 
 - **Standard Deduction**: $16,100 (single) / $32,200 (married filing jointly), 2026 figures
 - **SALT Cap**: State/local income tax and property tax share one cap: $40,400 in 2026, rising 1%/yr through 2029, then back to $10,000 in 2030. Above ~$505k of income the cap shrinks by 30% of the excess, never below $10,000. Household income and state income tax rate are inputs.

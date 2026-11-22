@@ -22,12 +22,4 @@ impl AppConfig {
 
     /// PMI is only required when the first mortgage starts above this loan-to-value (%)
     pub const PMI_REQUIRED_ABOVE_LTV: f64 = 80.0;
-
-    // ===== PROPERTY DATA VALIDATION RANGES =====
-
-    /// Minimum interest rate (%)
-    pub const MIN_INTEREST_RATE: f64 = 0.0;
-
-    /// Maximum interest rate (%)
-    pub const MAX_INTEREST_RATE: f64 = 30.0;
 }

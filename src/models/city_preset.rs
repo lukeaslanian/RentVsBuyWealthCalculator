@@ -1,9 +1,11 @@
-use super::property_data::default_interest_rate;
+use super::property_data::{
+    default_interest_rate, default_refinance_rate, HpapAtRefinance, RefinanceCostPayment,
+    RefinanceTerm, DEFAULT_REFINANCE_AFTER_YEARS, DEFAULT_REFINANCE_CLOSING_COST_PERCENT,
+};
 use super::{
     FilingStatus, HpapRepayment, InvestmentParameters, PropertyData, RentalData,
-    DEFAULT_HOUSEHOLD_INCOME, DEFAULT_PMI_RATE_PERCENT,
-    DEFAULT_HPAP_HOUSEHOLD_SIZE, DEFAULT_HPAP_LIQUID_ASSETS, HPAP_MAX_CLOSING_COST_ASSISTANCE,
-    HPAP_MIN_CONTRIBUTION,
+    DEFAULT_HOUSEHOLD_INCOME, DEFAULT_HPAP_HOUSEHOLD_SIZE, DEFAULT_HPAP_LIQUID_ASSETS,
+    DEFAULT_PMI_RATE_PERCENT, HPAP_MAX_CLOSING_COST_ASSISTANCE, HPAP_MIN_CONTRIBUTION,
 };
 use serde::{Deserialize, Serialize};
 
@@ -15,7 +17,9 @@ pub const DEFAULT_ASSESSMENT_CAP_PERCENT: f64 = 2.0;
 ///
 /// Values updated November 2026:
 /// - Rents: Zumper city rent pages (average asking rent by bedroom, Nov 21 2026)
-/// - Manhattan prices: Corcoran Report Q3 2026, resale condo median price by bedroom
+/// - Manhattan prices: Corcoran Report Q3 2026, resale condo median price by bedroom for
+///   studio/1BR; 2BR/3BR use typical rental-unit size (RentCafe: 995 / 1,533 sq ft) x the
+///   $1,468 median $/sq ft, since the "3+ bedroom" sale median includes luxury units
 /// - San Francisco prices: spring/summer 2026 condo medians by bedroom (studio estimated)
 /// - DC and Boston prices: citywide 2026 condo medians (~$500K DC, ~$775K Boston);
 ///   the split by bedroom count is estimated
@@ -93,6 +97,14 @@ impl CityPreset {
             home_appreciation_rate: self.home_appreciation_rate,
             pmi_rate_percent: DEFAULT_PMI_RATE_PERCENT, // $0 automatically at 20% down
             pmi_drop_off_ltv: 78.0,
+            // Refinance - off by default
+            enable_refinance: false,
+            refinance_after_years: DEFAULT_REFINANCE_AFTER_YEARS,
+            refinance_rate: default_refinance_rate(),
+            refinance_term: RefinanceTerm::Years30,
+            refinance_closing_cost_percent: DEFAULT_REFINANCE_CLOSING_COST_PERCENT,
+            refinance_cost_payment: RefinanceCostPayment::RollIntoLoan,
+            hpap_at_refinance: HpapAtRefinance::RollIntoLoan,
             // Tax benefits - enabled by default, user can disable
             enable_tax_benefits: true,
             filing_status: FilingStatus::Single,
@@ -443,14 +455,14 @@ impl CityPreset {
         Self {
             city_name: "New York City".to_string(),
             bedroom_type: "2".to_string(),
-            home_price: 1950000.0,
+            home_price: 1460000.0,
             down_payment_percent: 20.0,
             interest_rate: default_interest_rate(),
             property_tax_rate: 0.9,
             assessment_cap_percent: None,
             home_insurance_annual: 2200.0,
             maintenance_percent: 1.0,
-            hoa_fee: 1800.0,
+            hoa_fee: 1600.0,
             included_utilities: 0.0,
             non_included_utilities: 225.0,
             lender_grant: 0.0,
@@ -473,14 +485,14 @@ impl CityPreset {
         Self {
             city_name: "New York City".to_string(),
             bedroom_type: "3".to_string(),
-            home_price: 4000000.0,
+            home_price: 2250000.0,
             down_payment_percent: 20.0,
             interest_rate: default_interest_rate(),
             property_tax_rate: 0.9,
             assessment_cap_percent: None,
             home_insurance_annual: 2800.0,
             maintenance_percent: 1.0,
-            hoa_fee: 3000.0,
+            hoa_fee: 2400.0,
             included_utilities: 0.0,
             non_included_utilities: 275.0,
             lender_grant: 0.0,
@@ -674,7 +686,11 @@ mod tests {
         // Every preset's 3%-down loan stays under the ~$1.2M jumbo threshold
         for preset in CityPreset::all_presets() {
             if preset.down_payment_percent < 20.0 {
-                assert!(preset.home_price * 0.97 < 1_200_000.0, "{}", preset.display_name());
+                assert!(
+                    preset.home_price * 0.97 < 1_200_000.0,
+                    "{}",
+                    preset.display_name()
+                );
             }
         }
     }

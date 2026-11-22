@@ -44,9 +44,7 @@ pub fn YearByYearTable(
                                     "text-green-600 font-medium"
                                 } else if advantage < 0.0 {
                                     "text-red-600 font-medium"
-                                } else {
-                                    if dark_mode { "text-gray-300" } else { "text-gray-900" }
-                                };
+                                } else if dark_mode { "text-gray-300" } else { "text-gray-900" };
                                 let text_class = if dark_mode { "text-gray-300" } else { "text-gray-900" };
 
                                 rsx! {

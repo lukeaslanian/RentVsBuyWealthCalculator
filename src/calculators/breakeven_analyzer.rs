@@ -23,35 +23,7 @@ impl<'a> BreakEvenAnalyzer<'a> {
     pub fn find_break_even_year(&self) -> Option<usize> {
         let length = self.series1.len().min(self.series2.len());
 
-        for year in 1..=length {
-            if self.series1[year - 1] > self.series2[year - 1] {
-                return Some(year);
-            }
-        }
-
-        // No crossover found (renting always better, or tie)
-        None
-    }
-
-    /// Check if there's a crossover point
-    pub fn has_crossover(&self) -> bool {
-        self.find_break_even_year().is_some()
-    }
-
-    /// Get the value at the break-even point
-    pub fn value_at_break_even(&self) -> f64 {
-        match self.find_break_even_year() {
-            Some(year) => self.series1[year - 1],
-            None => 0.0,
-        }
-    }
-
-    /// Get the difference between series at a specific year
-    pub fn difference_at_year(&self, year: usize) -> f64 {
-        if year < 1 || year > self.series1.len() || year > self.series2.len() {
-            return 0.0;
-        }
-        self.series1[year - 1] - self.series2[year - 1]
+        (1..=length).find(|&year| self.series1[year - 1] > self.series2[year - 1])
     }
 
     /// Find all break-even years where the advantage switches between scenarios
@@ -133,7 +105,6 @@ mod tests {
 
         // Buying overtakes renting at year 3 (350 > 300)
         assert_eq!(analyzer.find_break_even_year(), Some(3));
-        assert!(analyzer.has_crossover());
     }
 
     #[test]
@@ -145,7 +116,6 @@ mod tests {
 
         // Renting is always better
         assert_eq!(analyzer.find_break_even_year(), None);
-        assert!(!analyzer.has_crossover());
     }
 
     #[test]
@@ -157,29 +127,6 @@ mod tests {
 
         // Buying is always better (breaks even at year 1)
         assert_eq!(analyzer.find_break_even_year(), Some(1));
-    }
-
-    #[test]
-    fn test_value_at_break_even() {
-        let buy_wealth = vec![100.0, 200.0, 350.0, 500.0];
-        let rent_wealth = vec![150.0, 250.0, 300.0, 400.0];
-
-        let analyzer = BreakEvenAnalyzer::new(&buy_wealth, &rent_wealth);
-
-        // Break-even occurs at year 3, where buy wealth is 350
-        assert_eq!(analyzer.value_at_break_even(), 350.0);
-    }
-
-    #[test]
-    fn test_difference_at_year() {
-        let buy_wealth = vec![100.0, 200.0, 300.0];
-        let rent_wealth = vec![150.0, 180.0, 250.0];
-
-        let analyzer = BreakEvenAnalyzer::new(&buy_wealth, &rent_wealth);
-
-        assert_eq!(analyzer.difference_at_year(1), -50.0); // 100 - 150
-        assert_eq!(analyzer.difference_at_year(2), 20.0);  // 200 - 180
-        assert_eq!(analyzer.difference_at_year(3), 50.0);  // 300 - 250
     }
 
     #[test]
@@ -212,12 +159,36 @@ mod tests {
         let buy_wealth2 = vec![100.0, 200.0, 300.0];
         let rent_wealth2 = vec![150.0, 250.0, 350.0];
         let analyzer2 = BreakEvenAnalyzer::new(&buy_wealth2, &rent_wealth2);
-        assert_eq!(analyzer2.break_even_description(), "Never (renting always better)");
+        assert_eq!(
+            analyzer2.break_even_description(),
+            "Never (renting always better)"
+        );
 
         // No crossover (buying always better)
         let buy_wealth3 = vec![200.0, 300.0, 400.0];
         let rent_wealth3 = vec![100.0, 200.0, 300.0];
         let analyzer3 = BreakEvenAnalyzer::new(&buy_wealth3, &rent_wealth3);
-        assert_eq!(analyzer3.break_even_description(), "Never (buying always better)");
+        assert_eq!(
+            analyzer3.break_even_description(),
+            "Never (buying always better)"
+        );
+    }
+
+    #[test]
+    fn test_empty_series() {
+        let empty: Vec<f64> = vec![];
+        let analyzer = BreakEvenAnalyzer::new(&empty, &empty);
+        assert_eq!(analyzer.find_break_even_year(), None);
+        assert!(analyzer.find_all_break_even_years().is_empty());
+        assert_eq!(analyzer.break_even_description(), "Never");
+    }
+
+    #[test]
+    fn test_description_lists_several_crossovers() {
+        // Crossovers at years 2, 3, 4, 5 and 6: "Years 2, 3, 4, 5 and 6"
+        let buy_wealth = vec![100.0, 250.0, 300.0, 350.0, 300.0, 500.0];
+        let rent_wealth = vec![200.0, 200.0, 350.0, 300.0, 400.0, 450.0];
+        let analyzer = BreakEvenAnalyzer::new(&buy_wealth, &rent_wealth);
+        assert_eq!(analyzer.break_even_description(), "Years 2, 3, 4, 5 and 6");
     }
 }

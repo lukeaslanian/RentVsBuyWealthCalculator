@@ -1,4 +1,5 @@
 use crate::models::InvestmentParameters;
+use crate::utils::AppConfig;
 use dioxus::prelude::*;
 
 #[component]
@@ -12,20 +13,21 @@ pub fn SharedParamsPanel(
     let capital_gains_rate = investment_params.read().capital_gains_tax_rate;
 
     let mut return_rate_focused = use_signal(|| false);
-    let mut return_rate_text = use_signal(|| String::new());
+    let mut return_rate_text = use_signal(String::new);
     let mut inflation_focused = use_signal(|| false);
-    let mut inflation_text = use_signal(|| String::new());
+    let mut inflation_text = use_signal(String::new);
     let mut cg_focused = use_signal(|| false);
     let mut cg_text = use_signal(String::new);
 
     // Validate return rate (reasonable range: -50% to 50%)
-    let return_rate_valid = return_rate >= -50.0 && return_rate < 50.0;
+    let return_rate_valid = (-50.0..50.0).contains(&return_rate);
 
     // Validate years (1-30)
-    let years_valid = years >= 1 && years <= 30;
+    let years_valid =
+        (AppConfig::MIN_ANALYSIS_YEARS..=AppConfig::MAX_ANALYSIS_YEARS).contains(&years);
 
     // Validate inflation rate (reasonable range: -10% to 20%)
-    let inflation_valid = inflation_rate >= -10.0 && inflation_rate <= 20.0;
+    let inflation_valid = (-10.0..=20.0).contains(&inflation_rate);
 
     // Validate capital gains tax rate (0% to 50%)
     let cg_valid = (0.0..=50.0).contains(&capital_gains_rate);
@@ -119,7 +121,7 @@ pub fn SharedParamsPanel(
                         oninput: move |evt| {
                             if let Ok(v) = evt.value().parse::<usize>() {
                                 let mut params = investment_params.write();
-                                params.analysis_years = v.clamp(1, 30);
+                                params.analysis_years = v.clamp(AppConfig::MIN_ANALYSIS_YEARS, AppConfig::MAX_ANALYSIS_YEARS);
                             }
                         },
                         title: "Number of years to analyze (1-30)"

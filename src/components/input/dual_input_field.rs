@@ -59,9 +59,9 @@ pub fn DualInputField(
 
     // Track focus state for inputs
     let mut percent_focused = use_signal(|| false);
-    let mut percent_text = use_signal(|| String::new());
+    let mut percent_text = use_signal(String::new);
     let mut dollar_focused = use_signal(|| false);
-    let mut dollar_text = use_signal(|| String::new());
+    let mut dollar_text = use_signal(String::new);
 
     rsx! {
         div { class: "space-y-1",
@@ -243,10 +243,8 @@ fn validate_value(
             if value <= min_val {
                 valid = false;
             }
-        } else {
-            if value < min_val {
-                valid = false;
-            }
+        } else if value < min_val {
+            valid = false;
         }
     }
 
@@ -255,10 +253,8 @@ fn validate_value(
             if value >= max_val {
                 valid = false;
             }
-        } else {
-            if value > max_val {
-                valid = false;
-            }
+        } else if value > max_val {
+            valid = false;
         }
     }
 
