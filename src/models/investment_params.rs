@@ -1,12 +1,20 @@
 use crate::utils::AppConfig;
 use serde::{Deserialize, Serialize};
 
+/// Default long-term capital gains rate: 15% federal bracket (most households).
+/// Users in states that tax gains (e.g., DC ~6-10%) should add their state rate.
+pub const DEFAULT_CAPITAL_GAINS_TAX_RATE: f64 = 15.0;
+
 /// Stores assumptions about investment returns on saved money.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct InvestmentParameters {
     pub annual_return_rate: f64,
     pub analysis_years: usize,
     pub inflation_rate: f64, // Annual inflation rate as percentage (e.g., 3.0%)
+    /// Combined (federal + state) long-term capital gains tax rate, as a percentage.
+    /// Applied to investment gains when portfolios are cashed out, and to home-sale
+    /// gains above the Section 121 exclusion. 0 disables capital gains taxes.
+    pub capital_gains_tax_rate: f64,
 }
 
 impl Default for InvestmentParameters {
@@ -18,6 +26,7 @@ impl Default for InvestmentParameters {
             annual_return_rate: 7.0,
             analysis_years: AppConfig::DEFAULT_ANALYSIS_YEARS,
             inflation_rate: 3.0, // 10-year US average (2015-2024): 2.86%, rounded to 3%
+            capital_gains_tax_rate: DEFAULT_CAPITAL_GAINS_TAX_RATE,
         }
     }
 }
@@ -34,7 +43,15 @@ impl InvestmentParameters {
             annual_return_rate,
             analysis_years,
             inflation_rate: 3.0,
+            capital_gains_tax_rate: DEFAULT_CAPITAL_GAINS_TAX_RATE,
         }
+    }
+
+    /// Value of a portfolio after paying capital gains tax on unrealized gains
+    /// (value above cost basis). Losses are not taxed (no benefit modeled).
+    pub fn after_tax_portfolio_value(&self, value: f64, cost_basis: f64) -> f64 {
+        let gain = (value - cost_basis).max(0.0);
+        value - gain * (self.capital_gains_tax_rate.clamp(0.0, 100.0) / 100.0)
     }
 
     /// Get monthly return rate

@@ -1,6 +1,9 @@
 use crate::calculators::MortgageCalculator;
 use crate::components::input::DualInputField;
-use crate::models::{FilingStatus, PropertyData};
+use crate::models::{
+    salt_cap, FilingStatus, HpapRepayment, PropertyData, HPAP_MAX_CLOSING_COST_ASSISTANCE,
+    TAX_BASE_YEAR,
+};
 use dioxus::prelude::*;
 
 #[component]
@@ -8,6 +11,37 @@ pub fn BuyingInputPanel(
     property_data: Signal<PropertyData>,
     #[props(default = false)] dark_mode: bool,
 ) -> Element {
+    // Summary of how HPAP changes cash at closing, first mortgage, and repayment
+    let hpap_summary = {
+        let data = property_data.read();
+        let cash_at_closing = data.buyer_cash_down_payment()
+            + data.buyer_cash_closing_costs()
+            + data.mortgage_points_cost();
+        let mut summary = format!(
+            "HPAP loan: {} · Your cash at closing: {} · First mortgage: {}",
+            format_currency_input(data.hpap_total_loan()),
+            format_currency_input(cash_at_closing),
+            format_currency_input(data.loan_amount()),
+        );
+        if data.hpap_repayment == HpapRepayment::FiveYearDeferral40Year {
+            summary.push_str(&format!(
+                " · HPAP payment from year 6: {}/mo",
+                format_currency_input(data.hpap_scheduled_payment())
+            ));
+        }
+        summary
+    };
+
+    // SALT cap note for the first analysis year (depends on income)
+    let salt_note = {
+        let data = property_data.read();
+        format!(
+            "Note: State/local income tax + property tax share one SALT cap: {} in {} for your income (rises 1%/yr through 2029, then reverts to $10,000 in 2030). Mortgage interest is fully deductible up to a $750k loan.",
+            format_currency_input(salt_cap(TAX_BASE_YEAR, data.household_income)),
+            TAX_BASE_YEAR,
+        )
+    };
+
     rsx! {
         div { class: if dark_mode { "bg-monokai-bgLight rounded-lg shadow p-6" } else { "bg-monokaiLight-bgLight rounded-lg shadow p-6" },
             h2 { class: if dark_mode { "text-xl font-semibold text-monokai-fg mb-4" } else { "text-xl font-semibold text-monokaiLight-fg mb-4" },
@@ -332,6 +366,108 @@ pub fn BuyingInputPanel(
                     dollar_max_exclusive: true,
                     dark_mode: dark_mode,
                 }
+
+                // DC HPAP Section
+                div { class: if dark_mode { "border-t border-monokai-bgLighter pt-4 mt-4" } else { "border-t border-monokaiLight-border pt-4 mt-4" },
+                    // HPAP Toggle
+                    div { class: "flex items-center justify-between mb-3",
+                        div {
+                            label { class: if dark_mode { "text-sm font-medium text-monokai-fg" } else { "text-sm font-medium text-monokaiLight-fg" },
+                                "DC HPAP"
+                            }
+                            p { class: if dark_mode { "text-xs text-monokai-fgMuted" } else { "text-xs text-monokaiLight-fgMuted" },
+                                "DC Home Purchase Assistance Program: 0% deferred loan for eligible first-time DC buyers"
+                            }
+                        }
+                        button {
+                            r#type: "button",
+                            class: if property_data.read().enable_hpap {
+                                "relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full bg-monokai-purple transition-colors"
+                            } else {
+                                if dark_mode {
+                                    "relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full bg-monokai-bgLighter transition-colors"
+                                } else {
+                                    "relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full bg-monokaiLight-border transition-colors"
+                                }
+                            },
+                            onclick: move |_| {
+                                let mut data = property_data.write();
+                                data.enable_hpap = !data.enable_hpap;
+                            },
+                            span {
+                                class: if property_data.read().enable_hpap {
+                                    "inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-6"
+                                } else {
+                                    "inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1"
+                                },
+                            }
+                        }
+                    }
+
+                    // HPAP details (only shown when enabled)
+                    if property_data.read().enable_hpap {
+                        div { class: if dark_mode { "bg-monokai-bgLighter rounded-lg p-4 space-y-3" } else { "bg-monokaiLight-bg rounded-lg p-4 space-y-3" },
+                            InputField {
+                                label: "HPAP Loan Amount ($)",
+                                value: property_data.read().hpap_loan_amount,
+                                onchange: move |v| {
+                                    let mut data = property_data.write();
+                                    data.hpap_loan_amount = v;
+                                },
+                                tooltip: "HPAP gap financing per the DHCD FY26 table (loans closed after Oct 1, 2026), based on income vs. Median Family Income and household size: up to 50% MFI $202,000; 51-80% MFI $161,600 / $141,400 / $101,000; 81-110% MFI $80,800 / $70,000. Covers your down payment first; any excess reduces your first mortgage.",
+                                min: Some(0.0),
+                                max: Some(property_data.read().home_price),
+                                dark_mode: dark_mode,
+                            }
+
+                            InputField {
+                                label: "HPAP Closing Cost Assistance ($)",
+                                value: property_data.read().hpap_closing_cost_assistance,
+                                onchange: move |v| {
+                                    let mut data = property_data.write();
+                                    data.hpap_closing_cost_assistance = v;
+                                },
+                                tooltip: "Additional HPAP assistance toward closing costs (up to $4,000), added to the HPAP loan balance",
+                                min: Some(0.0),
+                                max: Some(HPAP_MAX_CLOSING_COST_ASSISTANCE),
+                                dark_mode: dark_mode,
+                            }
+
+                            div {
+                                label { class: if dark_mode { "block text-sm font-medium text-monokai-fgMuted mb-1" } else { "block text-sm font-medium text-monokaiLight-fgMuted mb-1" },
+                                    "Repayment (Income Tier, % of MFI)"
+                                }
+                                select {
+                                    class: if dark_mode {
+                                        "w-full px-3 py-2 border border-monokai-border bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-blue focus:border-monokai-blue"
+                                    } else {
+                                        "w-full px-3 py-2 border border-monokaiLight-border bg-monokaiLight-bg text-monokaiLight-fg rounded-md shadow-sm focus:ring-monokaiLight-blue focus:border-monokaiLight-blue"
+                                    },
+                                    value: if matches!(property_data.read().hpap_repayment, HpapRepayment::FiveYearDeferral40Year) { "moderate" } else { "low" },
+                                    onchange: move |evt| {
+                                        let mut data = property_data.write();
+                                        data.hpap_repayment = if evt.value() == "moderate" {
+                                            HpapRepayment::FiveYearDeferral40Year
+                                        } else {
+                                            HpapRepayment::DeferredUntilSale
+                                        };
+                                    },
+                                    option { value: "low", "{HpapRepayment::DeferredUntilSale.display_name()}" }
+                                    option { value: "moderate", "{HpapRepayment::FiveYearDeferral40Year.display_name()}" }
+                                }
+                            }
+
+                            // Summary of how HPAP changes the purchase
+                            p { class: if dark_mode { "text-xs text-monokai-fgMuted" } else { "text-xs text-monokaiLight-fgMuted" },
+                                "{hpap_summary}"
+                            }
+
+                            p { class: if dark_mode { "text-xs text-monokai-fgDim italic" } else { "text-xs text-monokaiLight-fgDim italic" },
+                                "Note: HPAP is 0% interest and due in full on sale (subtracted from equity). Eligibility depends on income and household size, and funding is limited; confirm current terms with DC DHCD."
+                            }
+                        }
+                    }
+                }
             }
 
             // Tax Benefits Section
@@ -405,8 +541,8 @@ pub fn BuyingInputPanel(
                                         FilingStatus::Single
                                     };
                                 },
-                                option { value: "single", "Individual return ($15,750 std deduction)" }
-                                option { value: "joint", "Joint return ($31,500 std deduction)" }
+                                option { value: "single", "Individual return ($16,100 std deduction)" }
+                                option { value: "joint", "Joint return ($32,200 std deduction)" }
                             }
                         }
 
@@ -424,6 +560,7 @@ pub fn BuyingInputPanel(
 
                                 // Calculate tax savings
                                 data.calculate_annual_tax_savings(
+                                    1,
                                     first_year_interest,
                                     data.home_price,
                                     data.hoa_fee * 12.0,
@@ -443,6 +580,49 @@ pub fn BuyingInputPanel(
                             dollar_min: Some(0.0),
                             dollar_max: Some(50000.0),
                             disable_dollar_input: true,
+                            dark_mode: dark_mode,
+                        }
+
+                        // Household Income (drives state income tax and the SALT cap phase-down)
+                        InputField {
+                            label: "Household Income ($/year)",
+                            value: property_data.read().household_income,
+                            onchange: move |v| {
+                                let mut data = property_data.write();
+                                data.household_income = v;
+                            },
+                            tooltip: "Approximate annual household income (MAGI). Used to estimate state income tax and the SALT cap, which phases down above ~$505,000.",
+                            min: Some(0.0),
+                            max: Some(100_000_000.0),
+                            max_exclusive: true,
+                            dark_mode: dark_mode,
+                        }
+
+                        // State/Local Income Tax % of income and $
+                        DualInputField {
+                            label: "State/Local Income Tax",
+                            percent_value: property_data.read().state_income_tax_rate,
+                            dollar_value: property_data.read().annual_state_income_tax(),
+                            on_percent_change: move |v| {
+                                let mut data = property_data.write();
+                                data.state_income_tax_rate = v;
+                            },
+                            on_dollar_change: move |dollars| {
+                                let data_read = property_data.read();
+                                let income = data_read.household_income;
+                                if income > 0.01 {
+                                    let percent = (dollars / income) * 100.0;
+                                    drop(data_read);
+                                    let mut data = property_data.write();
+                                    data.state_income_tax_rate = percent;
+                                }
+                            },
+                            tooltip: "Effective (average) state + local income tax as a % of income. Shares the SALT cap with property tax, and counts for renters too. DC is roughly 6-7% for middle incomes; enter 0 for states without income tax.",
+                            show_first_year_label: false,
+                            percent_min: Some(0.0),
+                            percent_max: Some(20.0),
+                            dollar_min: Some(0.0),
+                            dollar_max: Some(property_data.read().household_income * 0.20),
                             dark_mode: dark_mode,
                         }
 
@@ -497,7 +677,7 @@ pub fn BuyingInputPanel(
 
                         // Info about SALT cap
                         p { class: if dark_mode { "text-xs text-monokai-fgDim italic" } else { "text-xs text-monokaiLight-fgDim italic" },
-                            "Note: Property tax deduction is capped at $10,000 (SALT limit). Mortgage interest is fully deductible up to $750k loan."
+                            "{salt_note}"
                         }
                     }
                 }

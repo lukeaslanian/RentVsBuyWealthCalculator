@@ -28,6 +28,7 @@ Monte Carlo Panel:
   - Percentages auto-format with % symbol (e.g., 5.99%)
 - 16 city presets (Washington DC, Boston, NYC, San Francisco x 4 bedroom sizes)
 - US Tax Benefits calculation (mortgage interest and property tax deductions, **enabled by default**)
+- Optional add-ons: NYC-style broker's fee for renters, and DC's [Home Purchase Assistance Program (HPAP)](https://dhcd.dc.gov/page/hpap-eligibility-how-apply-and-program-details) for buyers. HPAP is a 0% gap-financing second loan that covers the down payment first, with any excess reducing the first mortgage. You choose the repayment tier: deferred until sale, or deferred 5 years then amortized over 40 years. The remaining balance is repaid at sale.
 - Monte Carlo simulations for probabilistic analysis over the time period
 - Interactive charts showing wealth accumulation with tooltips
 - Year-by-year data breakdown table
@@ -38,13 +39,21 @@ Monte Carlo Panel:
 
 The calculator includes US tax benefit calculations following current tax law (2025), **enabled by default**:
 
-- **Standard Deduction**: $15,750 (single) / $31,500 (married filing jointly)
-- **SALT Cap**: Property tax deduction capped at $10,000
+- **Standard Deduction**: $16,100 (single) / $32,200 (married filing jointly), 2026 figures
+- **SALT Cap**: State/local income tax and property tax share one cap: $40,400 in 2026, rising 1%/yr through 2029, then back to $10,000 in 2030. Above ~$505k of income the cap shrinks by 30% of the excess, never below $10,000. Household income and state income tax rate are inputs.
+- **Incremental Benefit**: The buyer is only credited with deductions that come from owning. State income tax or other deductions a renter would also itemize don't count.
 - **Mortgage Interest**: Fully deductible for loans up to $750,000
 - **Itemized vs Standard**: Only provides benefit when itemized deductions exceed standard deduction
 - **HOA Fees**: Generally NOT deductible (default: 0%) unless you have a home office
 
-This accurately reflects the 2017 Tax Cuts and Jobs Act (TCJA) provisions, which significantly reduced the tax advantages of homeownership for many middle-class buyers.
+This reflects the 2017 Tax Cuts and Jobs Act (TCJA) as extended and modified by the One Big Beautiful Bill Act (July 2025).
+
+### Capital Gains
+
+Total wealth is measured as if everything were sold and cashed out that year:
+
+- **Investment portfolios** (buyer's and renter's): gains above what was contributed are taxed at the capital gains rate you set (default 15%; add your state rate).
+- **Home sale**: profit above purchase price and closing costs is tax-free up to $250k (single) / $500k (joint) after 2 years of ownership. Anything above that is taxed at the same rate.
 
 ## Live Mortgage Rates
 
@@ -53,27 +62,24 @@ It also rebuilds weekly to get refreshed rates and avoid CORS related issues tha
 
 ### For Local Development (Optional)
 
-To enable live rate fetching:
+To use the current rate locally:
 
 1. Get a free API key from https://fred.stlouisfed.org/docs/api/api_key.html
-2. Set the environment variable:
+2. Set the environment variable before building:
    ```bash
    export FRED_API_KEY=your_api_key_here
    dx serve
    ```
-3. The "Live Rate" button in the Interest Rate field will fetch current rates
 
-Without the API key, the app uses a fallback rate of 5.99% and the Live Rate button shows an appropriate message.
+Without the API key, the build uses a fallback rate of 5.99%. The key is read only at build time and never included in the app.
 
 ### For GitHub Pages Deployment
 
-The GitHub Actions workflow automatically uses the `FRED_API_KEY` secret if configured:
+The GitHub Actions workflow passes the `FRED_API_KEY` repository secret to the build:
 
-1. Go to your repo's Settings → Secrets and variables → Actions
-2. Add a new repository secret named `FRED_API_KEY`
-3. The next deployment will include the live rate fetched at build time
-
-The compiled WASM will also use this key for the "Live Rate" button on the deployed site.
+1. Go to your repo's Settings → Secrets and variables → Actions (or run `gh secret set FRED_API_KEY`)
+2. Add a repository secret named `FRED_API_KEY`
+3. The next deployment (and the weekly scheduled rebuild) will use the latest rate
 
 ## Prerequisites
 

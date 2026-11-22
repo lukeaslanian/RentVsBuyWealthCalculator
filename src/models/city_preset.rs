@@ -1,5 +1,8 @@
 use super::property_data::default_interest_rate;
-use super::{FilingStatus, InvestmentParameters, PropertyData, RentalData};
+use super::{
+    FilingStatus, HpapRepayment, InvestmentParameters, PropertyData, RentalData,
+    DEFAULT_HOUSEHOLD_INCOME, DEFAULT_STATE_INCOME_TAX_RATE, HPAP_MAX_CLOSING_COST_ASSISTANCE,
+};
 use serde::{Deserialize, Serialize};
 
 /// Pre-populated default values for a specific city and property size.
@@ -69,6 +72,13 @@ impl CityPreset {
             marginal_tax_rate: 22.0,
             other_itemized_deductions: 0.0,
             hoa_deduction_percent: 0.0,
+            household_income: DEFAULT_HOUSEHOLD_INCOME,
+            state_income_tax_rate: DEFAULT_STATE_INCOME_TAX_RATE,
+            // DC HPAP - off by default, user can enable
+            enable_hpap: false,
+            hpap_loan_amount: 202000.0,
+            hpap_closing_cost_assistance: HPAP_MAX_CLOSING_COST_ASSISTANCE,
+            hpap_repayment: HpapRepayment::DeferredUntilSale,
         }
     }
 
@@ -594,7 +604,7 @@ mod tests {
         let preset = CityPreset::dc_two_bedroom();
         let property_data = preset.to_property_data();
         assert_eq!(property_data.home_price, 575000.0);
-        assert_eq!(property_data.interest_rate, 5.99);
+        assert_eq!(property_data.interest_rate, default_interest_rate()); // FRED rate at build time, or 5.99 fallback
     }
 
     #[test]

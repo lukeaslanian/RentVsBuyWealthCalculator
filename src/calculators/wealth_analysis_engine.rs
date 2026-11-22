@@ -74,9 +74,11 @@ impl WealthAnalysisEngine {
         let total_months = self.investment_params.analysis_years * AppConfig::MONTHS_PER_YEAR;
 
         // STEP 1: Initialize portfolios
-        // Buyer starts at $0 (spent down payment), Renter starts with down payment invested
-        let down_payment = self.property_data.down_payment_amount();
-        let purchase_closing_costs = self.property_data.closing_costs_purchase();
+        // Buyer starts at $0 (spent down payment), Renter starts with down payment invested.
+        // Only the buyer's own cash counts: any DC HPAP assistance covering the down payment
+        // or closing costs is a loan, not buyer cash (it is repaid via payments / at sale).
+        let down_payment = self.property_data.buyer_cash_down_payment();
+        let purchase_closing_costs = self.property_data.buyer_cash_closing_costs();
         let mortgage_points_cost = self.property_data.mortgage_points_cost();
         let buy_start_capital = down_payment + purchase_closing_costs + mortgage_points_cost;
 
@@ -85,12 +87,17 @@ impl WealthAnalysisEngine {
         let broker_fee = self.rental_data.broker_fee_amount();
         let rent_initial_costs = security_deposit + broker_fee;
 
-        // Renter invests the difference between buyer's upfront costs and their own
-        // (they get to invest what they didn't spend on a down payment)
-        let rent_start_capital = buy_start_capital - rent_initial_costs;
+        // Whoever spends less upfront invests the difference. Normally that's the renter
+        // (they didn't spend a down payment), but with low-cash-down buying (e.g., HPAP)
+        // the renter's deposit + broker fee can exceed the buyer's cash at closing.
+        let upfront_difference = buy_start_capital - rent_initial_costs;
 
-        let mut running_buy_portfolio = 0.0;
-        let mut running_rent_portfolio = rent_start_capital.max(0.0);
+        let mut running_buy_portfolio = (-upfront_difference).max(0.0);
+        let mut running_rent_portfolio = upfront_difference.max(0.0);
+
+        // Cost basis (total contributions) for capital gains tax on liquidation
+        let mut buy_cost_basis = running_buy_portfolio;
+        let mut rent_cost_basis = running_rent_portfolio;
 
         // STEP 2: Track cumulative costs
         let mut buy_cumulative_cost = buy_start_capital;
@@ -115,69 +122,85 @@ impl WealthAnalysisEngine {
             let pre_payment_balance = mortgage_calc.calculate_remaining_balance(month - 1);
 
             // Calculate this month's costs for both scenarios
+            // HPAP repayment (0% interest, moderate-income tier only) is an ownership cost
             let ownership_costs = self.calculate_monthly_ownership_costs(
                 current_home_value,
                 year,
                 results.monthly_mortgage_payment,
                 pre_payment_balance,
-            );
+            ) + self.property_data.hpap_monthly_payment(month);
             let rental_costs = self.calculate_monthly_rental_costs(year);
 
             // Track total out-of-pocket spending to date
             buy_cumulative_cost += ownership_costs;
             rent_cumulative_cost += rental_costs;
 
-            // CRITICAL STEP: Update investment portfolios
+            // CRITICAL STEP: Update investment portfolios (and their cost basis)
             self.update_portfolios(
                 &mut running_buy_portfolio,
                 &mut running_rent_portfolio,
+                &mut buy_cost_basis,
+                &mut rent_cost_basis,
                 ownership_costs,
                 rental_costs,
             );
 
-            // Store monthly data for charts (0-indexed)
-            let equity = current_home_value - remaining_balance;
+            let is_year_end = month % AppConfig::MONTHS_PER_YEAR == 0;
+
+            // At the end of each year, apply homeowner tax benefits.
+            // Tax savings are added to the buyer's portfolio (as if they're investing their refund).
+            if is_year_end && self.property_data.enable_tax_benefits {
+                let annual_interest = mortgage_calc.calculate_interest_paid_in_year(year);
+                let annual_hoa_fees = self.property_data.hoa_fee_at_year(year) * 12.0;
+                let tax_savings = self.property_data.calculate_annual_tax_savings(
+                    year,
+                    annual_interest,
+                    current_home_value,
+                    annual_hoa_fees,
+                );
+
+                running_buy_portfolio += tax_savings;
+                buy_cost_basis += tax_savings;
+                // Reduce cumulative costs by tax savings (they get money back)
+                buy_cumulative_cost -= tax_savings;
+            }
+
+            // Net worth if everything were cashed out this month.
+            // Equity is net of all liens: first mortgage + any outstanding HPAP balance
+            let equity = current_home_value
+                - remaining_balance
+                - self.property_data.hpap_balance_after_month(month);
             let selling_costs =
                 current_home_value * (self.property_data.closing_costs_percent_sale / 100.0);
+            let home_sale_tax = self.property_data.home_sale_capital_gains_tax(
+                current_home_value,
+                selling_costs,
+                month,
+                self.investment_params.capital_gains_tax_rate,
+            );
+            let buy_portfolio_after_tax = self
+                .investment_params
+                .after_tax_portfolio_value(running_buy_portfolio, buy_cost_basis);
+            let rent_portfolio_after_tax = self
+                .investment_params
+                .after_tax_portfolio_value(running_rent_portfolio, rent_cost_basis);
 
+            // Store monthly data for charts (0-indexed). Portfolio series are pre-tax balances;
+            // total wealth is after selling costs and capital gains taxes.
             results.monthly_buy_cumulative_costs[month_index] = buy_cumulative_cost;
             results.monthly_rent_cumulative_costs[month_index] = rent_cumulative_cost;
             results.monthly_home_equity[month_index] = equity;
             results.monthly_buy_investment_portfolio[month_index] = running_buy_portfolio;
             results.monthly_rent_investment_portfolio[month_index] = running_rent_portfolio;
             results.monthly_buy_total_wealth[month_index] =
-                equity + running_buy_portfolio - selling_costs;
-            results.monthly_rent_total_wealth[month_index] = running_rent_portfolio + security_deposit;
+                equity - selling_costs - home_sale_tax + buy_portfolio_after_tax;
+            results.monthly_rent_total_wealth[month_index] =
+                rent_portfolio_after_tax + security_deposit;
             results.monthly_buy_costs[month_index] = ownership_costs;
             results.monthly_rent_costs[month_index] = rental_costs;
 
-            // At the end of each year, apply tax benefits and store yearly snapshot
-            if month % AppConfig::MONTHS_PER_YEAR == 0 {
-                // Calculate and apply tax benefits for homeowner
-                // Tax savings are added to the buyer's portfolio (as if they're investing their tax refund)
-                if self.property_data.enable_tax_benefits {
-                    let annual_interest = mortgage_calc.calculate_interest_paid_in_year(year);
-                    // Calculate annual HOA fees for this year (monthly fee * 12)
-                    let annual_hoa_fees = self.property_data.hoa_fee_at_year(year) * 12.0;
-                    let tax_savings = self.property_data.calculate_annual_tax_savings(
-                        annual_interest,
-                        current_home_value,
-                        annual_hoa_fees,
-                    );
-
-                    // Add tax savings to buyer's portfolio
-                    running_buy_portfolio += tax_savings;
-
-                    // Reduce cumulative costs by tax savings (they get money back)
-                    buy_cumulative_cost -= tax_savings;
-
-                    // Update the monthly data for this month to reflect tax benefits
-                    results.monthly_buy_investment_portfolio[month_index] = running_buy_portfolio;
-                    results.monthly_buy_cumulative_costs[month_index] = buy_cumulative_cost;
-                    results.monthly_buy_total_wealth[month_index] =
-                        equity + running_buy_portfolio - selling_costs;
-                }
-
+            // Store yearly snapshot
+            if is_year_end {
                 self.store_yearly_results(
                     results,
                     month,
@@ -266,6 +289,8 @@ impl WealthAnalysisEngine {
         &self,
         buy_portfolio: &mut f64,
         rent_portfolio: &mut f64,
+        buy_cost_basis: &mut f64,
+        rent_cost_basis: &mut f64,
         ownership_costs: f64,
         rental_costs: f64,
     ) {
@@ -279,9 +304,11 @@ impl WealthAnalysisEngine {
         if ownership_costs < rental_costs {
             // Buying is cheaper this month - buyer invests the savings
             *buy_portfolio += rental_costs - ownership_costs;
+            *buy_cost_basis += rental_costs - ownership_costs;
         } else if rental_costs < ownership_costs {
             // Renting is cheaper this month - renter invests the savings
             *rent_portfolio += ownership_costs - rental_costs;
+            *rent_cost_basis += ownership_costs - rental_costs;
         }
         // If costs are exactly equal, neither portfolio gets additional contribution
     }
@@ -303,9 +330,11 @@ impl WealthAnalysisEngine {
     ) {
         let year_index = year - 1;
 
-        // Calculate equity
+        // Calculate equity (net of first mortgage and any outstanding HPAP balance)
         let remaining_balance = mortgage_calc.calculate_remaining_balance(month);
-        let equity = current_home_value - remaining_balance;
+        let equity = current_home_value
+            - remaining_balance
+            - self.property_data.hpap_balance_after_month(month);
 
         results.buy_cumulative_costs[year_index] = buy_cumulative_cost;
         results.rent_cumulative_costs[year_index] = rent_cumulative_cost;
@@ -318,25 +347,16 @@ impl WealthAnalysisEngine {
         results.rent_monthly_costs[year_index] = current_rental_costs;
     }
 
-    /// Calculate total wealth for both scenarios
+    /// Yearly total wealth for both scenarios, taken from the year-end monthly values
+    /// (after selling costs, HPAP payoff, and capital gains taxes on liquidation)
     fn calculate_total_wealth(&self, results: &mut FinancialResults) {
         let years = self.investment_params.analysis_years;
 
         for year in 0..years {
-            // Buyer wealth = equity + investment portfolio - selling costs
-            let buy_equity = results.home_equity[year];
-            let buy_investments = results.buy_investment_portfolio[year];
-
-            // Subtract closing costs for selling
-            let home_value = results.home_value[year];
-            let selling_costs =
-                home_value * (self.property_data.closing_costs_percent_sale / 100.0);
-
-            results.buy_total_wealth[year] = buy_equity + buy_investments - selling_costs;
-
-            // Renter wealth = investment portfolio + security deposit (returned at end of tenancy)
-            results.rent_total_wealth[year] = results.rent_investment_portfolio[year]
-                + self.rental_data.security_deposit;
+            let year_end_month_index = (year + 1) * AppConfig::MONTHS_PER_YEAR - 1;
+            results.buy_total_wealth[year] = results.monthly_buy_total_wealth[year_end_month_index];
+            results.rent_total_wealth[year] =
+                results.monthly_rent_total_wealth[year_end_month_index];
         }
     }
 
@@ -384,6 +404,120 @@ mod tests {
 
         // Check that some wealth accumulates
         assert!(results.buy_total_wealth[29] > 0.0 || results.rent_total_wealth[29] > 0.0);
+    }
+
+    fn run(property_data: PropertyData) -> FinancialResults {
+        let mut engine =
+            WealthAnalysisEngine::new(property_data, RentalData::new(), InvestmentParameters::new());
+        engine.run_analysis();
+        engine.results().expect("Results should be present").clone()
+    }
+
+    #[test]
+    fn test_hpap_disabled_matches_baseline() {
+        let baseline = run(PropertyData::new());
+        let mut toggled = PropertyData::new();
+        toggled.hpap_repayment = crate::models::HpapRepayment::FiveYearDeferral40Year;
+        toggled.hpap_loan_amount = 50000.0;
+        // enable_hpap stays false: other HPAP fields must be ignored
+        assert_eq!(baseline, run(toggled));
+    }
+
+    #[test]
+    fn test_hpap_reduces_mortgage_and_renter_start_capital() {
+        let baseline = run(PropertyData::new());
+
+        let mut with_hpap = PropertyData::new();
+        with_hpap.enable_hpap = true;
+        with_hpap.hpap_loan_amount = 100000.0;
+        let hpap = run(with_hpap.clone());
+
+        // Gap financing reduces the first mortgage payment
+        assert!(hpap.monthly_mortgage_payment < baseline.monthly_mortgage_payment);
+        // Buyer spends less cash upfront, so the renter has less to invest initially
+        assert!(hpap.monthly_rent_investment_portfolio[0] < baseline.monthly_rent_investment_portfolio[0]);
+        // Deferred-until-sale: full HPAP balance is subtracted from equity
+        let expected_equity_year1 =
+            hpap.home_value[0] - hpap.mortgage_balance[0] - with_hpap.hpap_total_loan();
+        assert!((hpap.home_equity[0] - expected_equity_year1).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_hpap_moderate_tier_payments_start_in_year_six() {
+        let mut deferred = PropertyData::new();
+        deferred.enable_hpap = true;
+        deferred.hpap_loan_amount = 100000.0;
+        let mut moderate = deferred.clone();
+        moderate.hpap_repayment = crate::models::HpapRepayment::FiveYearDeferral40Year;
+
+        let deferred_results = run(deferred);
+        let moderate_results = run(moderate.clone());
+
+        // Identical through month 60
+        assert_eq!(
+            deferred_results.monthly_buy_costs[59],
+            moderate_results.monthly_buy_costs[59]
+        );
+        // Month 61 adds the HPAP payment
+        let diff = moderate_results.monthly_buy_costs[60] - deferred_results.monthly_buy_costs[60];
+        assert!((diff - moderate.hpap_scheduled_payment()).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_buyer_invests_upfront_surplus_when_renter_spends_more() {
+        let mut property_data = PropertyData::new();
+        property_data.enable_hpap = true;
+        property_data.hpap_loan_amount = 100000.0;
+        property_data.closing_costs_percent_purchase = 0.5; // fully covered by $4k assistance
+
+        let results = run(property_data);
+        // Buyer's cash at closing is $0, renter pays a security deposit, so the buyer
+        // starts with the difference invested and the renter starts with nothing.
+        assert!(results.monthly_buy_investment_portfolio[0] > 0.0);
+    }
+
+    fn run_with_cg_rate(capital_gains_tax_rate: f64) -> FinancialResults {
+        let mut params = InvestmentParameters::new();
+        params.capital_gains_tax_rate = capital_gains_tax_rate;
+        let mut engine = WealthAnalysisEngine::new(PropertyData::new(), RentalData::new(), params);
+        engine.run_analysis();
+        engine.results().expect("Results should be present").clone()
+    }
+
+    #[test]
+    fn test_zero_capital_gains_rate_matches_pre_tax_wealth() {
+        let results = run_with_cg_rate(0.0);
+        let property_data = PropertyData::new();
+        for year in 0..results.buy_total_wealth.len() {
+            let selling_costs =
+                results.home_value[year] * property_data.closing_costs_percent_sale / 100.0;
+            let expected_buy =
+                results.home_equity[year] + results.buy_investment_portfolio[year] - selling_costs;
+            let expected_rent =
+                results.rent_investment_portfolio[year] + RentalData::new().security_deposit;
+            assert!((results.buy_total_wealth[year] - expected_buy).abs() < 1e-6);
+            assert!((results.rent_total_wealth[year] - expected_rent).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn test_capital_gains_tax_reduces_portfolio_wealth() {
+        let untaxed = run_with_cg_rate(0.0);
+        let taxed = run_with_cg_rate(15.0);
+        let last = taxed.rent_total_wealth.len() - 1;
+
+        // Pre-tax portfolio balances are unchanged; only liquidation value drops
+        assert_eq!(
+            untaxed.rent_investment_portfolio[last],
+            taxed.rent_investment_portfolio[last]
+        );
+        assert!(taxed.rent_total_wealth[last] < untaxed.rent_total_wealth[last]);
+        // Renter's portfolio tax can't exceed 15% of the whole balance
+        assert!(
+            untaxed.rent_total_wealth[last] - taxed.rent_total_wealth[last]
+                < 0.15 * untaxed.rent_investment_portfolio[last]
+        );
+        assert!(taxed.buy_total_wealth[last] <= untaxed.buy_total_wealth[last]);
     }
 
     #[test]

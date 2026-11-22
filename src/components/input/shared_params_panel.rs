@@ -9,11 +9,14 @@ pub fn SharedParamsPanel(
     let return_rate = investment_params.read().annual_return_rate;
     let years = investment_params.read().analysis_years;
     let inflation_rate = investment_params.read().inflation_rate;
+    let capital_gains_rate = investment_params.read().capital_gains_tax_rate;
 
     let mut return_rate_focused = use_signal(|| false);
     let mut return_rate_text = use_signal(|| String::new());
     let mut inflation_focused = use_signal(|| false);
     let mut inflation_text = use_signal(|| String::new());
+    let mut cg_focused = use_signal(|| false);
+    let mut cg_text = use_signal(String::new);
 
     // Validate return rate (reasonable range: -50% to 50%)
     let return_rate_valid = return_rate >= -50.0 && return_rate < 50.0;
@@ -24,6 +27,9 @@ pub fn SharedParamsPanel(
     // Validate inflation rate (reasonable range: -10% to 20%)
     let inflation_valid = inflation_rate >= -10.0 && inflation_rate <= 20.0;
 
+    // Validate capital gains tax rate (0% to 50%)
+    let cg_valid = (0.0..=50.0).contains(&capital_gains_rate);
+
     rsx! {
         div { class: if dark_mode { "bg-monokai-bgLight rounded-lg shadow p-6" } else { "bg-monokaiLight-bgLight rounded-lg shadow p-6" },
             h2 { class: if dark_mode { "text-xl font-semibold text-monokai-fg mb-4" } else { "text-xl font-semibold text-monokaiLight-fg mb-4" },
@@ -33,7 +39,7 @@ pub fn SharedParamsPanel(
                 "Parameters that affect both buying and renting scenarios"
             }
 
-            div { class: "grid grid-cols-1 md:grid-cols-3 gap-4",
+            div { class: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4",
                 // Investment Return Rate
                 div {
                     label { class: if dark_mode { "block text-sm font-medium text-monokai-fgMuted mb-1" } else { "block text-sm font-medium text-monokaiLight-fgMuted mb-1" },
@@ -180,6 +186,60 @@ pub fn SharedParamsPanel(
                     } else {
                         p { class: if dark_mode { "text-xs text-monokai-fgDim mt-1" } else { "text-xs text-monokaiLight-fgDim mt-1" },
                             "Default 3% (10-year US avg)"
+                        }
+                    }
+                }
+
+                // Capital Gains Tax Rate
+                div {
+                    label { class: if dark_mode { "block text-sm font-medium text-monokai-fgMuted mb-1" } else { "block text-sm font-medium text-monokaiLight-fgMuted mb-1" },
+                        "Capital Gains Tax Rate (%)"
+                    }
+                    input {
+                        r#type: "text",
+                        class: if dark_mode {
+                            if cg_valid {
+                                "w-full px-3 py-2 border border-monokai-border bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-blue focus:border-monokai-blue"
+                            } else {
+                                "w-full px-3 py-2 border border-monokai-red bg-monokai-bgLighter text-monokai-fg rounded-md shadow-sm focus:ring-monokai-red focus:border-monokai-red"
+                            }
+                        } else {
+                            if cg_valid {
+                                "w-full px-3 py-2 border border-monokaiLight-border bg-monokaiLight-bg text-monokaiLight-fg rounded-md shadow-sm focus:ring-monokaiLight-blue focus:border-monokaiLight-blue"
+                            } else {
+                                "w-full px-3 py-2 border border-monokaiLight-red bg-monokaiLight-bg text-monokaiLight-fg rounded-md shadow-sm focus:ring-monokaiLight-red focus:border-monokaiLight-red"
+                            }
+                        },
+                        value: if cg_focused() {
+                            cg_text()
+                        } else {
+                            format!("{:.2}%", capital_gains_rate)
+                        },
+                        inputmode: "decimal",
+                        onfocus: move |_| {
+                            cg_focused.set(true);
+                            cg_text.set(capital_gains_rate.to_string());
+                        },
+                        onblur: move |_| {
+                            cg_focused.set(false);
+                            let clean_value = cg_text().replace("%", "").trim().to_string();
+                            if let Ok(v) = clean_value.parse::<f64>() {
+                                let mut params = investment_params.write();
+                                params.capital_gains_tax_rate = v;
+                            }
+                        },
+                        oninput: move |evt| {
+                            cg_text.set(evt.value());
+                        },
+                        title: "Combined long-term capital gains rate (federal 0/15/20%, + 3.8% NIIT for high earners, + state; DC taxes gains as income at ~6-10%). Applied to investment gains when cashed out, and to home-sale gains above the $250k/$500k exclusion. Set 0 to ignore."
+                    }
+                    if !cg_valid {
+                        p { class: if dark_mode { "text-xs text-monokai-red mt-1" } else { "text-xs text-monokaiLight-red mt-1" },
+                            "Valid range: >= 0 and <= 50"
+                        }
+                    } else {
+                        p { class: if dark_mode { "text-xs text-monokai-fgDim mt-1" } else { "text-xs text-monokaiLight-fgDim mt-1" },
+                            "Default 15% federal; add your state rate"
                         }
                     }
                 }
