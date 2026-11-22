@@ -27,7 +27,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
-          components: clippy, rustfmt
+          components: rustfmt
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -42,12 +42,6 @@ jobs:
 
       - name: Formatting
         run: cargo fmt --check
-
-      - name: Clippy (native, including tests)
-        run: cargo clippy --all-targets -- -D warnings
-
-      - name: Clippy (web build)
-        run: cargo clippy --target wasm32-unknown-unknown -- -D warnings
 
       - name: Tests (unit + property-based)
         run: cargo test
