@@ -233,6 +233,39 @@ mod tests {
     }
 
     #[test]
+    fn test_monte_carlo_sanity() {
+        for preset in [
+            crate::models::CityPreset::dc_two_bedroom(),
+            crate::models::CityPreset::nyc_three_bedroom(),
+            crate::models::CityPreset::sf_studio(),
+        ] {
+            let simulator = MonteCarloSimulator::new(
+                preset.to_property_data(),
+                preset.to_rental_data(),
+                preset.to_investment_parameters(),
+            );
+            let results = simulator.run_simulation(200);
+            let name = preset.display_name();
+
+            assert_eq!(results.buy_final_wealth.len(), 200, "{name}");
+            assert!(results.buy_wins + results.rent_wins <= 200, "{name}");
+            assert!((0.0..=100.0).contains(&results.buy_win_percentage()), "{name}");
+            assert!(
+                results.buy_final_wealth.iter().chain(&results.rent_final_wealth).all(|v| v.is_finite()),
+                "{name}: non-finite wealth"
+            );
+            // Percentiles are ordered and the average sits within the range
+            assert!(results.buy_wealth_p10() <= results.buy_wealth_p90(), "{name}");
+            assert!(results.rent_wealth_p10() <= results.rent_wealth_p90(), "{name}");
+            let (min, max) = results
+                .buy_final_wealth
+                .iter()
+                .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), &v| (lo.min(v), hi.max(v)));
+            assert!(results.avg_buy_wealth() >= min && results.avg_buy_wealth() <= max, "{name}");
+        }
+    }
+
+    #[test]
     fn test_simulation_results() {
         let results = SimulationResults {
             num_simulations: 100,

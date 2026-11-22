@@ -89,6 +89,22 @@ mod tests {
     }
 
     #[test]
+    fn test_after_tax_portfolio_value() {
+        let params = InvestmentParameters::new(); // 15% capital gains
+        // $100k gain on $200k of contributions: $15k tax
+        assert!((params.after_tax_portfolio_value(300000.0, 200000.0) - 285000.0).abs() < 1e-6);
+        // Portfolio at a loss: no tax, no credit
+        assert_eq!(params.after_tax_portfolio_value(150000.0, 200000.0), 150000.0);
+        // 0% rate disables the tax
+        let mut untaxed = params.clone();
+        untaxed.capital_gains_tax_rate = 0.0;
+        assert_eq!(untaxed.after_tax_portfolio_value(300000.0, 200000.0), 300000.0);
+        // Out-of-range rates are clamped (never more than the whole gain)
+        untaxed.capital_gains_tax_rate = 250.0;
+        assert_eq!(untaxed.after_tax_portfolio_value(300000.0, 200000.0), 200000.0);
+    }
+
+    #[test]
     fn test_with_values() {
         let params = InvestmentParameters::with_values(5.0, 20);
         assert_eq!(params.annual_return_rate, 5.0);

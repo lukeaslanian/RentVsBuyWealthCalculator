@@ -58,6 +58,9 @@ pub const DEFAULT_HOUSEHOLD_INCOME: f64 = 150000.0;
 /// Default effective state/local income tax rate (DC is roughly 6-7% effective for middle incomes)
 pub const DEFAULT_STATE_INCOME_TAX_RATE: f64 = 6.5;
 
+/// Default annual PMI rate (% of the loan), typical for ~97% LTV with good credit
+pub const DEFAULT_PMI_RATE_PERCENT: f64 = 0.5;
+
 /// Default HPAP household size
 pub const DEFAULT_HPAP_HOUSEHOLD_SIZE: usize = 1;
 /// Default liquid assets (savings) before purchase, for the HPAP contribution rule
@@ -179,6 +182,10 @@ pub struct PropertyData {
     pub interest_rate: f64,
     pub mortgage_points: f64, // Discount points (1 point = 1% of loan, reduces rate ~0.25% per point)
     pub property_tax_rate: f64,
+    /// Cap on yearly growth of the taxable assessed value (e.g., SF Prop 13: 2%,
+    /// DC homestead: 10%). When off, property tax follows the home's market value.
+    pub enable_assessment_cap: bool,
+    pub assessment_cap_percent: f64,
     pub home_insurance_annual: f64,
     pub maintenance_percent: f64,
     pub hoa_fee: f64,
@@ -189,7 +196,7 @@ pub struct PropertyData {
     pub seller_closing_assistance: f64,
     pub closing_costs_percent_sale: f64, // As percentage of home price (typically 6-8%)
     pub home_appreciation_rate: f64,
-    pub monthly_pmi: f64, // Monthly PMI (private mortgage insurance) payment
+    pub pmi_rate_percent: f64, // Annual PMI as a % of the original first-mortgage amount
     pub pmi_drop_off_ltv: f64, // LTV percentage when PMI drops off (typically 78%)
 
     // Tax benefit parameters
@@ -208,6 +215,7 @@ pub struct PropertyData {
     pub hpap_enter_own_max: bool,          // true = use hpap_own_max/hpap_own_repayment instead of the table
     pub hpap_own_max: f64,                 // User-entered maximum gap financing (up to $202,000)
     pub hpap_own_repayment: HpapRepayment, // User-selected repayment terms (with hpap_own_max)
+    pub hpap_own_contribution: f64,        // User-entered required contribution (with hpap_own_max)
     pub hpap_household_size: usize,        // Household size (1-8) for the DHCD income table
     pub hpap_liquid_assets: f64,           // Savings before purchase; sets the required contribution
     pub hpap_closing_cost_assistance: f64, // Closing cost assistance (max $4,000), part of the HPAP loan
@@ -224,6 +232,8 @@ impl Default for PropertyData {
             interest_rate: default_interest_rate(),
             mortgage_points: 0.0,
             property_tax_rate: 0.85, // DC Class 1 residential rate
+            enable_assessment_cap: true, // DC homestead: taxable assessment grows at most 10%/yr
+            assessment_cap_percent: 10.0,
             home_insurance_annual: 1700.0,
             maintenance_percent: 1.0,
             hoa_fee: 650.0,
@@ -234,7 +244,7 @@ impl Default for PropertyData {
             seller_closing_assistance: 0.0,
             closing_costs_percent_sale: 6.0,
             home_appreciation_rate: 3.5,
-            monthly_pmi: 232.0, // ~0.5%/yr of the $557,750 loan
+            pmi_rate_percent: DEFAULT_PMI_RATE_PERCENT,
             pmi_drop_off_ltv: 78.0,
 
             // Tax benefits - enabled by default
@@ -248,9 +258,10 @@ impl Default for PropertyData {
 
             // DC HPAP - disabled by default
             enable_hpap: false,
-            hpap_enter_own_max: false,
+            hpap_enter_own_max: true, // default: user enters their own maximum
             hpap_own_max: 0.0,
             hpap_own_repayment: HpapRepayment::DeferredUntilSale,
+            hpap_own_contribution: HPAP_MIN_CONTRIBUTION,
             hpap_household_size: DEFAULT_HPAP_HOUSEHOLD_SIZE,
             hpap_liquid_assets: DEFAULT_HPAP_LIQUID_ASSETS,
             hpap_closing_cost_assistance: HPAP_MAX_CLOSING_COST_ASSISTANCE,
@@ -283,6 +294,10 @@ impl PropertyData {
             return None;
         }
         if self.hpap_enter_own_max {
+            // $0 means the maximum hasn't been entered yet: no HPAP (not even closing help)
+            if self.hpap_own_max <= 0.0 {
+                return None;
+            }
             return Some(HpapTier {
                 max_gap_financing: self.hpap_own_max.clamp(0.0, HPAP_MAX_GAP_FINANCING),
                 mfi_band: "your maximum",
@@ -297,8 +312,12 @@ impl PropertyData {
         self.hpap_tier().map(|tier| tier.repayment)
     }
 
-    /// Minimum cash the buyer must contribute: $500 or 50% of liquid assets above $3,000
+    /// Minimum cash the buyer must contribute: the amount the user entered (with their own
+    /// maximum), otherwise $500 or 50% of liquid assets above $3,000, whichever is greater
     pub fn hpap_required_contribution(&self) -> f64 {
+        if self.hpap_enter_own_max {
+            return self.hpap_own_contribution.max(0.0);
+        }
         HPAP_MIN_CONTRIBUTION.max(0.5 * (self.hpap_liquid_assets - HPAP_ASSET_EXEMPTION))
     }
 
@@ -338,17 +357,32 @@ impl PropertyData {
     }
 
     /// Down payment % that uses the household's full HPAP gap financing (None if ineligible).
-    /// The buyer's required contribution goes to closing costs first, then the down payment.
     pub fn hpap_full_use_down_payment_percent(&self) -> Option<f64> {
+        let tier = self.hpap_tier()?;
+        self.hpap_down_payment_percent_for(tier.max_gap_financing)
+    }
+
+    /// Down payment % at which HPAP gap financing equals `amount` (capped at the maximum).
+    /// The down payment is the HPAP amount plus whatever part of the buyer's required
+    /// contribution isn't already spent on closing costs and points. None if HPAP isn't in use.
+    pub fn hpap_down_payment_percent_for(&self, amount: f64) -> Option<f64> {
         let tier = self.hpap_tier()?;
         if self.home_price <= 0.0 {
             return None;
         }
-        let closing_costs_owed = self.closing_costs_purchase() - self.hpap_closing_costs_applied();
-        let contribution_to_down_payment =
-            (self.hpap_required_contribution() - closing_costs_owed).max(0.0);
-        let down_payment = tier.max_gap_financing + contribution_to_down_payment;
-        Some((down_payment / self.home_price * 100.0).min(100.0))
+        let amount = amount.clamp(0.0, tier.max_gap_financing);
+        // Points depend on the loan, which depends on the down payment: settle in a few passes
+        let mut probe = self.clone();
+        for _ in 0..4 {
+            let upfront_costs_owed = probe.closing_costs_purchase()
+                - probe.hpap_closing_costs_applied()
+                + probe.mortgage_points_cost();
+            let contribution_to_down_payment =
+                (probe.hpap_required_contribution() - upfront_costs_owed).max(0.0);
+            let down_payment = amount + contribution_to_down_payment;
+            probe.down_payment_percent = (down_payment / self.home_price * 100.0).min(100.0);
+        }
+        Some(probe.down_payment_percent)
     }
 
     /// Monthly HPAP repayment for a given month (1-indexed).
@@ -384,6 +418,26 @@ impl PropertyData {
             }
             _ => total,
         }
+    }
+
+    /// Next year's taxable assessed value: with a cap, the smaller of market value and last
+    /// year's assessment grown by the cap; without one, the market value.
+    pub fn next_assessed_value(&self, previous_assessed_value: f64, market_value: f64) -> f64 {
+        if self.enable_assessment_cap {
+            (previous_assessed_value * (1.0 + self.assessment_cap_percent / 100.0)).min(market_value)
+        } else {
+            market_value
+        }
+    }
+
+    /// Monthly PMI at the start of the loan: the annual rate times the first mortgage, or $0
+    /// when the first mortgage starts at or below 80% LTV (lenders don't require it there).
+    /// Payments stop later once the balance reaches `pmi_drop_off_ltv` (handled by the engine).
+    pub fn monthly_pmi(&self) -> f64 {
+        if self.initial_ltv_percent() <= AppConfig::PMI_REQUIRED_ABOVE_LTV {
+            return 0.0;
+        }
+        self.loan_amount().max(0.0) * (self.pmi_rate_percent / 100.0) / AppConfig::MONTHS_PER_YEAR as f64
     }
 
     /// Initial loan-to-value of the first mortgage, as a percentage
@@ -454,6 +508,10 @@ impl PropertyData {
             && self.mortgage_points <= 10.0
             && self.property_tax_rate >= 0.0
             && self.property_tax_rate < 10.0
+            && self.pmi_rate_percent >= 0.0
+            && self.pmi_rate_percent <= 5.0
+            && self.assessment_cap_percent >= 0.0
+            && self.assessment_cap_percent <= 100.0
             && self.home_insurance_annual >= 0.0
             && self.maintenance_percent >= 0.0
             && self.maintenance_percent < 10.0
@@ -476,6 +534,7 @@ impl PropertyData {
             && self.hoa_deduction_percent <= 100.0
             && (1..=HPAP_MAX_HOUSEHOLD_SIZE).contains(&self.hpap_household_size)
             && (0.0..=HPAP_MAX_GAP_FINANCING).contains(&self.hpap_own_max)
+            && self.hpap_own_contribution >= 0.0
             && self.hpap_liquid_assets >= 0.0
             && self.hpap_closing_cost_assistance >= 0.0
             && self.hpap_closing_cost_assistance <= HPAP_MAX_CLOSING_COST_ASSISTANCE
@@ -508,7 +567,7 @@ impl PropertyData {
         &self,
         year: usize,
         annual_mortgage_interest: f64,
-        current_home_value: f64,
+        taxable_home_value: f64,
         annual_hoa_fees: f64,
     ) -> f64 {
         if !self.enable_tax_benefits {
@@ -518,7 +577,7 @@ impl PropertyData {
         let tax_year = TAX_BASE_YEAR + year.saturating_sub(1) as i32;
         let cap = salt_cap(tax_year, self.household_income);
 
-        let annual_property_tax = current_home_value * (self.property_tax_rate / 100.0);
+        let annual_property_tax = taxable_home_value * (self.property_tax_rate / 100.0);
         let state_income_tax = self.annual_state_income_tax();
 
         // SALT: income tax + property tax share one cap. Without the home, only income tax.
@@ -624,6 +683,61 @@ mod tests {
     }
 
     #[test]
+    fn test_monthly_pmi_from_rate() {
+        // 3% down on $575,000: $557,750 * 0.5% / 12
+        let data = PropertyData::new();
+        assert!((data.monthly_pmi() - 557750.0 * 0.005 / 12.0).abs() < 1e-6);
+        // Smaller loan, smaller PMI
+        let mut ten_down = PropertyData::new();
+        ten_down.down_payment_percent = 10.0;
+        assert!(ten_down.monthly_pmi() < data.monthly_pmi());
+        // No PMI at or below 80% LTV
+        let mut twenty_down = PropertyData::new();
+        twenty_down.down_payment_percent = 20.0;
+        assert_eq!(twenty_down.monthly_pmi(), 0.0);
+    }
+
+    #[test]
+    fn test_assessment_cap() {
+        let mut data = PropertyData::new();
+        data.enable_assessment_cap = true;
+        data.assessment_cap_percent = 2.0;
+        // Market grew 50%: assessment only grows 2%
+        assert!((data.next_assessed_value(100000.0, 150000.0) - 102000.0).abs() < 1e-6);
+        // Never above market value (e.g., after a price drop)
+        assert_eq!(data.next_assessed_value(100000.0, 90000.0), 90000.0);
+        // No cap: follows market value
+        data.enable_assessment_cap = false;
+        assert_eq!(data.next_assessed_value(100000.0, 150000.0), 150000.0);
+    }
+
+    #[test]
+    fn test_home_sale_exclusion_joint_filers() {
+        let mut data = PropertyData::new();
+        data.filing_status = FilingStatus::MarriedFilingJointly;
+        data.home_price = 500000.0;
+        data.closing_costs_percent_purchase = 4.0; // basis 520,000
+        data.seller_closing_assistance = 0.0;
+        // Gain 326,000 is under the $500k joint exclusion: no tax after 2 years
+        assert_eq!(data.home_sale_capital_gains_tax(900000.0, 54000.0, 24, 15.0), 0.0);
+        // Gain 726,000: 226,000 taxable at 15%
+        let tax = data.home_sale_capital_gains_tax(1300000.0, 54000.0, 24, 15.0);
+        assert!((tax - 226000.0 * 0.15).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_salt_high_income_and_after_2029() {
+        // High income in 2026: phase-down hits the $10,000 floor
+        assert_eq!(salt_cap(2026, 2_000_000.0), 10000.0);
+        // 2030+: flat $10,000 regardless of income
+        assert_eq!(salt_cap(2030, 50_000.0), 10000.0);
+        assert_eq!(salt_cap(2045, 2_000_000.0), 10000.0);
+        // Threshold rises 1%/yr: $510,000 is above the 2026 threshold but not the 2027 one
+        assert!(salt_cap(2026, 510000.0) < 40400.0);
+        assert_eq!(salt_cap(2027, 510000.0), 40804.0);
+    }
+
+    #[test]
     fn test_salt_cap_schedule_and_phase_down() {
         assert_eq!(salt_cap(2026, 150000.0), 40400.0);
         assert_eq!(salt_cap(2029, 150000.0), 41624.0);
@@ -677,6 +791,7 @@ mod tests {
     fn hpap_data() -> PropertyData {
         let mut data = PropertyData::new();
         data.enable_hpap = true;
+        data.hpap_enter_own_max = false; // use the DHCD table
         data.household_income = 70000.0;
         data.hpap_household_size = 1;
         data.hpap_liquid_assets = 10000.0; // required contribution: 0.5 * 7,000 = 3,500
@@ -790,18 +905,52 @@ mod tests {
         data.hpap_enter_own_max = true;
         data.hpap_own_max = 90000.0;
         data.hpap_own_repayment = HpapRepayment::FiveYearDeferral40Year;
+        data.hpap_own_contribution = 2500.0;
 
         let tier = data.hpap_tier().expect("own maximum is always used");
+        // Entered contribution is used instead of the savings-based rule
+        assert_eq!(data.hpap_required_contribution(), 2500.0);
         assert_eq!(tier.max_gap_financing, 90000.0);
         assert_eq!(data.hpap_repayment(), Some(HpapRepayment::FiveYearDeferral40Year));
 
         data.down_payment_percent = data.hpap_full_use_down_payment_percent().unwrap();
         assert!((data.hpap_gap_financing() - 90000.0).abs() < 1e-6);
 
+        // $0 maximum = not entered yet: no HPAP at all, including closing cost help
+        let mut not_entered = data.clone();
+        not_entered.hpap_own_max = 0.0;
+        assert_eq!(not_entered.hpap_tier(), None);
+        assert_eq!(not_entered.hpap_total_loan(), 0.0);
+
         // Capped at the $202,000 program limit
         data.hpap_own_max = 500000.0;
         assert_eq!(data.hpap_tier().unwrap().max_gap_financing, HPAP_MAX_GAP_FINANCING);
         assert!(!data.is_valid());
+    }
+
+    #[test]
+    fn test_hpap_amount_to_use() {
+        let mut data = hpap_data(); // table mode, $161,600 max
+        // Use $50,000 of the maximum
+        data.down_payment_percent = data.hpap_down_payment_percent_for(50000.0).unwrap();
+        assert!((data.hpap_gap_financing() - 50000.0).abs() < 1e-6);
+        // Amounts above the maximum are capped
+        data.down_payment_percent = data.hpap_down_payment_percent_for(999999.0).unwrap();
+        assert!((data.hpap_gap_financing() - 161600.0).abs() < 1e-6);
+
+        // Contribution bigger than closing costs owed: the rest goes into the down payment
+        let mut data = hpap_data();
+        data.hpap_liquid_assets = 103000.0; // $50,000 contribution vs $19,000 closing costs owed
+        data.down_payment_percent = data.hpap_down_payment_percent_for(50000.0).unwrap();
+        assert!((data.hpap_gap_financing() - 50000.0).abs() < 1e-6);
+        assert!((data.buyer_cash_at_closing() - 50000.0).abs() < 1e-6);
+
+        // Mortgage points (which depend on the loan) still land on the target
+        let mut data = hpap_data();
+        data.mortgage_points = 1.0;
+        data.hpap_liquid_assets = 103000.0;
+        data.down_payment_percent = data.hpap_down_payment_percent_for(60000.0).unwrap();
+        assert!((data.hpap_gap_financing() - 60000.0).abs() < 1.0);
     }
 
     #[test]

@@ -1,4 +1,6 @@
 use crate::calculators::{BreakEvenAnalyzer, MortgageCalculator};
+#[cfg(test)]
+use crate::models::CityPreset;
 use crate::models::{FinancialResults, InvestmentParameters, PropertyData, RentalData};
 use crate::utils::AppConfig;
 
@@ -102,6 +104,9 @@ impl WealthAnalysisEngine {
 
         // STEP 3: Track home value with appreciation
         let mut current_home_value = self.property_data.home_price;
+        // Taxable assessed value: starts at the purchase price; with an assessment cap it is
+        // reassessed once a year and can grow no faster than the cap
+        let mut assessed_value = self.property_data.home_price;
         let monthly_appreciation_rate =
             self.property_data.home_appreciation_rate / 100.0 / AppConfig::MONTHS_PER_YEAR as f64;
 
@@ -111,6 +116,16 @@ impl WealthAnalysisEngine {
 
             // Apply monthly home appreciation
             current_home_value *= 1.0 + monthly_appreciation_rate;
+
+            // Property tax base: capped assessments step up once a year; uncapped ones
+            // follow market value
+            if !self.property_data.enable_assessment_cap {
+                assessed_value = current_home_value;
+            } else if month > 1 && (month - 1) % AppConfig::MONTHS_PER_YEAR == 0 {
+                assessed_value = self
+                    .property_data
+                    .next_assessed_value(assessed_value, current_home_value);
+            }
 
             // Remaining balance must be computed before ownership costs so PMI drop-off can be applied
             let month_index = month - 1;
@@ -122,6 +137,7 @@ impl WealthAnalysisEngine {
             // HPAP repayment (0% interest, moderate-income tier only) is an ownership cost
             let ownership_costs = self.calculate_monthly_ownership_costs(
                 current_home_value,
+                assessed_value,
                 year,
                 results.monthly_mortgage_payment,
                 pre_payment_balance,
@@ -152,7 +168,7 @@ impl WealthAnalysisEngine {
                 let tax_savings = self.property_data.calculate_annual_tax_savings(
                     year,
                     annual_interest,
-                    current_home_value,
+                    assessed_value,
                     annual_hoa_fees,
                 );
 
@@ -218,6 +234,7 @@ impl WealthAnalysisEngine {
     fn calculate_monthly_ownership_costs(
         &self,
         current_home_value: f64,
+        assessed_value: f64,
         year: usize,
         monthly_mortgage: f64,
         pre_payment_balance: f64,
@@ -225,7 +242,7 @@ impl WealthAnalysisEngine {
         // Get inflation multiplier for this year
         let inflation_mult = self.investment_params.inflation_multiplier(year);
 
-        let monthly_property_tax = ((current_home_value * self.property_data.property_tax_rate)
+        let monthly_property_tax = ((assessed_value * self.property_data.property_tax_rate)
             / 100.0)
             / AppConfig::MONTHS_PER_YEAR as f64;
 
@@ -242,18 +259,12 @@ impl WealthAnalysisEngine {
         // Utilities grow with inflation
         let utilities = self.property_data.non_included_utilities * inflation_mult;
 
-        // PMI: charged until LTV (based on original purchase price) drops to pmi_drop_off_ltv.
-        // Only applies when a monthly_pmi amount has been entered.
-        // Lenders only require PMI when the first mortgage starts above 80% LTV.
-        let pmi_required = self.property_data.initial_ltv_percent() > AppConfig::PMI_REQUIRED_ABOVE_LTV;
-        let pmi = if pmi_required && self.property_data.monthly_pmi > 0.0 {
-            let ltv =
-                pre_payment_balance / self.property_data.home_price * 100.0;
-            if ltv > self.property_data.pmi_drop_off_ltv {
-                self.property_data.monthly_pmi
-            } else {
-                0.0
-            }
+        // PMI: rate x first mortgage (0 if the loan starts at or below 80% LTV), charged until
+        // the balance drops to pmi_drop_off_ltv of the original purchase price.
+        let monthly_pmi = self.property_data.monthly_pmi();
+        let ltv = pre_payment_balance / self.property_data.home_price * 100.0;
+        let pmi = if monthly_pmi > 0.0 && ltv > self.property_data.pmi_drop_off_ltv {
+            monthly_pmi
         } else {
             0.0
         };
@@ -417,6 +428,7 @@ mod tests {
     fn hpap_property_data() -> PropertyData {
         let mut data = PropertyData::new();
         data.enable_hpap = true;
+        data.hpap_enter_own_max = false; // use the DHCD table
         data.household_income = 70000.0;
         data.hpap_household_size = 1;
         data
@@ -494,21 +506,135 @@ mod tests {
     }
 
     #[test]
+    fn test_assessment_cap_lowers_property_tax_over_time() {
+        let mut capped = PropertyData::new();
+        capped.home_appreciation_rate = 6.0;
+        capped.enable_assessment_cap = true;
+        capped.assessment_cap_percent = 2.0;
+        let mut uncapped = capped.clone();
+        uncapped.enable_assessment_cap = false;
+
+        let capped_results = run(capped.clone());
+        let uncapped_results = run(uncapped);
+
+        // Year 1 with a cap: taxed on the purchase price
+        let month1_tax_diff =
+            uncapped_results.monthly_buy_costs[0] - capped_results.monthly_buy_costs[0];
+        let appreciated = capped.home_price * (1.0 + 0.06 / 12.0);
+        let expected = (appreciated - capped.home_price) * capped.property_tax_rate / 100.0 / 12.0;
+        assert!((month1_tax_diff - expected).abs() < 1e-6);
+
+        // Year 10: the capped owner pays noticeably less each month
+        assert!(
+            uncapped_results.monthly_buy_costs[119] - capped_results.monthly_buy_costs[119] > 100.0
+        );
+    }
+
+    #[test]
     fn test_no_pmi_when_first_mortgage_starts_at_or_below_80_ltv() {
         let mut twenty_down = PropertyData::new();
         twenty_down.down_payment_percent = 20.0;
-        twenty_down.monthly_pmi = 65.0;
         let mut no_pmi = twenty_down.clone();
-        no_pmi.monthly_pmi = 0.0;
+        no_pmi.pmi_rate_percent = 0.0;
         assert_eq!(run(twenty_down).monthly_buy_costs[0], run(no_pmi).monthly_buy_costs[0]);
 
-        // 3% down: PMI applies
-        let mut three_down = PropertyData::new();
-        three_down.monthly_pmi = 65.0;
+        // 3% down: PMI applies at rate x loan
+        let three_down = PropertyData::new();
         let mut three_down_no_pmi = three_down.clone();
-        three_down_no_pmi.monthly_pmi = 0.0;
-        let diff = run(three_down).monthly_buy_costs[0] - run(three_down_no_pmi).monthly_buy_costs[0];
-        assert!((diff - 65.0).abs() < 1e-6);
+        three_down_no_pmi.pmi_rate_percent = 0.0;
+        let diff = run(three_down.clone()).monthly_buy_costs[0]
+            - run(three_down_no_pmi).monthly_buy_costs[0];
+        assert!((diff - three_down.monthly_pmi()).abs() < 1e-6);
+        assert!(diff > 200.0);
+    }
+
+    /// Every number in the results must be finite (no NaN or infinity)
+    fn assert_all_finite(results: &FinancialResults, label: &str) {
+        let series: [(&str, &Vec<f64>); 20] = [
+            ("buy_cumulative_costs", &results.buy_cumulative_costs),
+            ("rent_cumulative_costs", &results.rent_cumulative_costs),
+            ("home_equity", &results.home_equity),
+            ("home_value", &results.home_value),
+            ("mortgage_balance", &results.mortgage_balance),
+            ("buy_investment_portfolio", &results.buy_investment_portfolio),
+            ("rent_investment_portfolio", &results.rent_investment_portfolio),
+            ("buy_total_wealth", &results.buy_total_wealth),
+            ("rent_total_wealth", &results.rent_total_wealth),
+            ("buy_monthly_costs", &results.buy_monthly_costs),
+            ("rent_monthly_costs", &results.rent_monthly_costs),
+            ("monthly_buy_cumulative_costs", &results.monthly_buy_cumulative_costs),
+            ("monthly_rent_cumulative_costs", &results.monthly_rent_cumulative_costs),
+            ("monthly_buy_total_wealth", &results.monthly_buy_total_wealth),
+            ("monthly_rent_total_wealth", &results.monthly_rent_total_wealth),
+            ("monthly_home_equity", &results.monthly_home_equity),
+            ("monthly_buy_investment_portfolio", &results.monthly_buy_investment_portfolio),
+            ("monthly_rent_investment_portfolio", &results.monthly_rent_investment_portfolio),
+            ("monthly_buy_costs", &results.monthly_buy_costs),
+            ("monthly_rent_costs", &results.monthly_rent_costs),
+        ];
+        for (name, values) in series {
+            assert!(values.iter().all(|v| v.is_finite()), "{label}: non-finite value in {name}");
+        }
+        assert!(results.monthly_mortgage_payment.is_finite(), "{label}: mortgage payment");
+    }
+
+    #[test]
+    fn test_all_presets_valid_and_finite_across_scenarios() {
+        // HPAP setups to try on every preset
+        let hpap_variants: [(&str, fn(&mut PropertyData)); 4] = [
+            ("hpap off", |_| {}),
+            ("hpap own max", |p| {
+                p.enable_hpap = true;
+                p.hpap_enter_own_max = true;
+                p.hpap_own_max = 80000.0;
+            }),
+            ("hpap own max, full use", |p| {
+                p.enable_hpap = true;
+                p.hpap_enter_own_max = true;
+                p.hpap_own_max = 202000.0;
+                p.hpap_own_repayment = crate::models::HpapRepayment::FiveYearDeferral40Year;
+                p.down_payment_percent = p.hpap_full_use_down_payment_percent().unwrap();
+            }),
+            ("hpap table", |p| {
+                p.enable_hpap = true;
+                p.hpap_enter_own_max = false;
+                p.household_income = 70000.0;
+            }),
+        ];
+        // Edge-case inputs to try on every preset
+        let edge_variants: [(&str, fn(&mut PropertyData, &mut RentalData)); 9] = [
+            ("as preset", |_, _| {}),
+            ("0% down", |p, _| p.down_payment_percent = 0.0),
+            ("100% down", |p, _| p.down_payment_percent = 100.0),
+            ("0% interest", |p, _| p.interest_rate = 0.0),
+            ("negative appreciation", |p, _| p.home_appreciation_rate = -5.0),
+            ("0 rent growth", |_, r| r.rent_increase_rate = 0.0),
+            ("2 points", |p, _| p.mortgage_points = 2.0),
+            ("no tax benefits", |p, _| p.enable_tax_benefits = false),
+            ("zero cap", |p, _| {
+                p.enable_assessment_cap = true;
+                p.assessment_cap_percent = 0.0;
+            }),
+        ];
+
+        for preset in CityPreset::all_presets() {
+            assert!(preset.to_property_data().is_valid(), "{}", preset.display_name());
+            assert!(preset.to_rental_data().is_valid(), "{}", preset.display_name());
+
+            for (hpap_label, hpap) in hpap_variants {
+                for (edge_label, edge) in edge_variants {
+                    let mut p = preset.to_property_data();
+                    let mut r = preset.to_rental_data();
+                    hpap(&mut p);
+                    edge(&mut p, &mut r);
+                    let label = format!("{} / {} / {}", preset.display_name(), hpap_label, edge_label);
+                    let mut engine =
+                        WealthAnalysisEngine::new(p, r, preset.to_investment_parameters());
+                    engine.run_analysis();
+                    assert_all_finite(engine.results().expect("results"), &label);
+                }
+            }
+        }
     }
 
     fn run_with_cg_rate(capital_gains_tax_rate: f64) -> FinancialResults {

@@ -194,29 +194,11 @@ pub fn RentalInputPanel(
     }
 }
 
-/// Format a number as currency with commas and 2 decimal places
+/// Format a number as currency with commas and 2 decimal places ("$1,234.56").
+/// Delegates to the shared formatter, which rounds to cents before splitting dollars and
+/// cents (so $7,999.9999 shows as $8,000.00, not "$7,999.100").
 fn format_currency_input(value: f64) -> String {
-    let abs_value = value.abs();
-    let integer_part = abs_value.floor() as u64;
-    let decimal_part = ((abs_value - integer_part as f64) * 100.0).round() as u64;
-
-    // Format integer part with commas
-    let integer_str = integer_part.to_string();
-    let mut formatted = String::new();
-    let chars: Vec<char> = integer_str.chars().rev().collect();
-
-    for (i, ch) in chars.iter().enumerate() {
-        if i > 0 && i % 3 == 0 {
-            formatted.push(',');
-        }
-        formatted.push(*ch);
-    }
-
-    let formatted_integer: String = formatted.chars().rev().collect();
-
-    // Add sign and dollar sign
-    let sign = if value < 0.0 { "-" } else { "" };
-    format!("{}${}.{:02}", sign, formatted_integer, decimal_part)
+    crate::utils::CurrencyFormatter::format_currency(value)
 }
 
 #[component]
@@ -315,8 +297,7 @@ fn InputField(
                 },
                 onblur: move |_| {
                     is_focused.set(false);
-                    let clean_value = input_text().replace(",", "").replace("$", "").trim().to_string();
-                    if let Ok(v) = clean_value.parse::<f64>() {
+                    if let Some(v) = crate::utils::CurrencyFormatter::parse_input(&input_text()) {
                         onchange.call(v);
                     }
                 },

@@ -714,13 +714,21 @@ fn draw_histogram(data: &[f64], dark_mode: bool) {
 }
 
 fn format_compact(value: f64) -> String {
-    if value.abs() >= 1_000_000.0 {
-        format!("${:.1}M", value / 1_000_000.0)
-    } else if value.abs() >= 1_000.0 {
-        format!("${:.0}K", value / 1_000.0)
+    let abs = value.abs();
+    // Choose the unit AFTER rounding, so $999,700 shows as "$1.0M" (not "$1000K")
+    // and $999.60 as "$1K" (not "$1000")
+    let (scaled, suffix, decimals) = if (abs / 1_000.0).round() >= 1_000.0 {
+        (abs / 1_000_000.0, "M", 1)
+    } else if abs.round() >= 1_000.0 {
+        (abs / 1_000.0, "K", 0)
     } else {
-        format!("${:.0}", value)
-    }
+        (abs, "", 0)
+    };
+    let number = format!("{:.*}", decimals, scaled);
+    // Sign goes before the dollar sign, and never on a value that rounds to zero
+    let is_zero = number.chars().all(|c| c == '0' || c == '.');
+    let sign = if value < 0.0 && !is_zero { "-" } else { "" };
+    format!("{sign}${number}{suffix}")
 }
 
 fn format_with_commas(n: usize) -> String {
@@ -732,4 +740,24 @@ fn format_with_commas(n: usize) -> String {
         .collect();
     let reversed: Vec<&str> = chunks.iter().map(|s| s.as_str()).rev().collect();
     reversed.join(",")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_compact;
+
+    #[test]
+    fn test_format_compact() {
+        assert_eq!(format_compact(1_250_000.0), "$1.2M");
+        assert_eq!(format_compact(850_000.0), "$850K");
+        assert_eq!(format_compact(500.0), "$500");
+        // Unit boundaries: rounding up moves to the next unit
+        assert_eq!(format_compact(999_700.0), "$1.0M");
+        assert_eq!(format_compact(999_400.0), "$999K");
+        assert_eq!(format_compact(999.6), "$1K");
+        // Negative values: sign before the dollar sign; no "-$0"
+        assert_eq!(format_compact(-50_000.0), "-$50K");
+        assert_eq!(format_compact(-1_500_000.0), "-$1.5M");
+        assert_eq!(format_compact(-0.4), "$0");
+    }
 }

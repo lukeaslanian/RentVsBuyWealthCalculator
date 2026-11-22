@@ -1,13 +1,14 @@
 use super::property_data::default_interest_rate;
 use super::{
     FilingStatus, HpapRepayment, InvestmentParameters, PropertyData, RentalData,
-    DEFAULT_HOUSEHOLD_INCOME,
+    DEFAULT_HOUSEHOLD_INCOME, DEFAULT_PMI_RATE_PERCENT,
     DEFAULT_HPAP_HOUSEHOLD_SIZE, DEFAULT_HPAP_LIQUID_ASSETS, HPAP_MAX_CLOSING_COST_ASSISTANCE,
+    HPAP_MIN_CONTRIBUTION,
 };
 use serde::{Deserialize, Serialize};
 
-/// Estimated annual PMI as a % of the loan, for ~97% LTV with good credit
-pub const PRESET_PMI_ANNUAL_RATE_PERCENT: f64 = 0.5;
+/// Assessment cap shown when a user turns the cap on for a city without one
+pub const DEFAULT_ASSESSMENT_CAP_PERCENT: f64 = 2.0;
 
 /// Pre-populated default values for a specific city and property size.
 /// This struct is immutable.
@@ -21,6 +22,7 @@ pub const PRESET_PMI_ANNUAL_RATE_PERCENT: f64 = 0.5;
 /// - Property tax: DC Class 1 0.85%; SF FY2026-27 1.1816%; Boston FY2026 $12.40/$1,000
 ///   minus the ~$4,354 owner-occupant residential exemption (effective rate per price);
 ///   Manhattan ~0.9% effective (estimate)
+/// - Assessment caps: SF Prop 13 2%/yr; DC homestead 10%/yr; none for Boston/Manhattan
 /// - Loans above ~$1.2M are jumbo, so those presets use 20% down (no PMI)
 /// - Appreciation and rent-growth rates are long-run assumptions, not current trends
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -33,6 +35,8 @@ pub struct CityPreset {
     pub down_payment_percent: f64,
     pub interest_rate: f64,
     pub property_tax_rate: f64,
+    /// Yearly cap on assessed-value growth, if the city has one (SF Prop 13, DC homestead)
+    pub assessment_cap_percent: Option<f64>,
     pub home_insurance_annual: f64,
     pub maintenance_percent: f64,
     pub hoa_fee: f64,
@@ -65,15 +69,6 @@ impl CityPreset {
         format!("{} - {} Bedroom", self.city_name, self.bedroom_type)
     }
 
-    /// Estimated monthly PMI: ~0.5%/yr of the loan below 20% down, otherwise none
-    pub fn estimated_monthly_pmi(&self) -> f64 {
-        if self.down_payment_percent >= 20.0 {
-            return 0.0;
-        }
-        let loan = self.home_price * (1.0 - self.down_payment_percent / 100.0) - self.lender_grant;
-        (loan * PRESET_PMI_ANNUAL_RATE_PERCENT / 100.0 / 12.0).round()
-    }
-
     /// Convert to PropertyData
     pub fn to_property_data(&self) -> PropertyData {
         PropertyData {
@@ -82,6 +77,10 @@ impl CityPreset {
             interest_rate: self.interest_rate,
             mortgage_points: 0.0,
             property_tax_rate: self.property_tax_rate,
+            enable_assessment_cap: self.assessment_cap_percent.is_some(),
+            assessment_cap_percent: self
+                .assessment_cap_percent
+                .unwrap_or(DEFAULT_ASSESSMENT_CAP_PERCENT),
             home_insurance_annual: self.home_insurance_annual,
             maintenance_percent: self.maintenance_percent,
             hoa_fee: self.hoa_fee,
@@ -92,7 +91,7 @@ impl CityPreset {
             seller_closing_assistance: self.seller_closing_assistance,
             closing_costs_percent_sale: self.closing_costs_percent_sale,
             home_appreciation_rate: self.home_appreciation_rate,
-            monthly_pmi: self.estimated_monthly_pmi(),
+            pmi_rate_percent: DEFAULT_PMI_RATE_PERCENT, // $0 automatically at 20% down
             pmi_drop_off_ltv: 78.0,
             // Tax benefits - enabled by default, user can disable
             enable_tax_benefits: true,
@@ -104,9 +103,10 @@ impl CityPreset {
             state_income_tax_rate: self.state_income_tax_rate,
             // DC HPAP - off by default, user can enable
             enable_hpap: false,
-            hpap_enter_own_max: false,
+            hpap_enter_own_max: true,
             hpap_own_max: 0.0,
             hpap_own_repayment: HpapRepayment::DeferredUntilSale,
+            hpap_own_contribution: HPAP_MIN_CONTRIBUTION,
             hpap_household_size: DEFAULT_HPAP_HOUSEHOLD_SIZE,
             hpap_liquid_assets: DEFAULT_HPAP_LIQUID_ASSETS,
             hpap_closing_cost_assistance: HPAP_MAX_CLOSING_COST_ASSISTANCE,
@@ -143,6 +143,7 @@ impl CityPreset {
             down_payment_percent: 3.0,
             interest_rate: default_interest_rate(),
             property_tax_rate: 0.85,
+            assessment_cap_percent: Some(10.0),
             home_insurance_annual: 1200.0,
             maintenance_percent: 1.0,
             hoa_fee: 450.0,
@@ -172,6 +173,7 @@ impl CityPreset {
             down_payment_percent: 3.0,
             interest_rate: default_interest_rate(),
             property_tax_rate: 0.85,
+            assessment_cap_percent: Some(10.0),
             home_insurance_annual: 1400.0,
             maintenance_percent: 1.0,
             hoa_fee: 550.0,
@@ -201,6 +203,7 @@ impl CityPreset {
             down_payment_percent: 3.0,
             interest_rate: default_interest_rate(),
             property_tax_rate: 0.85,
+            assessment_cap_percent: Some(10.0),
             home_insurance_annual: 1700.0,
             maintenance_percent: 1.0,
             hoa_fee: 650.0,
@@ -230,6 +233,7 @@ impl CityPreset {
             down_payment_percent: 3.0,
             interest_rate: default_interest_rate(),
             property_tax_rate: 0.85,
+            assessment_cap_percent: Some(10.0),
             home_insurance_annual: 2100.0,
             maintenance_percent: 1.0,
             hoa_fee: 800.0,
@@ -261,6 +265,7 @@ impl CityPreset {
             down_payment_percent: 3.0,
             interest_rate: default_interest_rate(),
             property_tax_rate: 0.32,
+            assessment_cap_percent: None,
             home_insurance_annual: 1400.0,
             maintenance_percent: 1.0,
             hoa_fee: 400.0,
@@ -290,6 +295,7 @@ impl CityPreset {
             down_payment_percent: 3.0,
             interest_rate: default_interest_rate(),
             property_tax_rate: 0.54,
+            assessment_cap_percent: None,
             home_insurance_annual: 1600.0,
             maintenance_percent: 1.0,
             hoa_fee: 500.0,
@@ -319,6 +325,7 @@ impl CityPreset {
             down_payment_percent: 3.0,
             interest_rate: default_interest_rate(),
             property_tax_rate: 0.73,
+            assessment_cap_percent: None,
             home_insurance_annual: 1900.0,
             maintenance_percent: 1.0,
             hoa_fee: 600.0,
@@ -348,6 +355,7 @@ impl CityPreset {
             down_payment_percent: 3.0,
             interest_rate: default_interest_rate(),
             property_tax_rate: 0.86,
+            assessment_cap_percent: None,
             home_insurance_annual: 2300.0,
             maintenance_percent: 1.0,
             hoa_fee: 750.0,
@@ -379,6 +387,7 @@ impl CityPreset {
             down_payment_percent: 3.0,
             interest_rate: default_interest_rate(),
             property_tax_rate: 0.9,
+            assessment_cap_percent: None,
             home_insurance_annual: 1500.0,
             maintenance_percent: 1.0,
             hoa_fee: 900.0,
@@ -408,6 +417,7 @@ impl CityPreset {
             down_payment_percent: 3.0,
             interest_rate: default_interest_rate(),
             property_tax_rate: 0.9,
+            assessment_cap_percent: None,
             home_insurance_annual: 1800.0,
             maintenance_percent: 1.0,
             hoa_fee: 1200.0,
@@ -437,6 +447,7 @@ impl CityPreset {
             down_payment_percent: 20.0,
             interest_rate: default_interest_rate(),
             property_tax_rate: 0.9,
+            assessment_cap_percent: None,
             home_insurance_annual: 2200.0,
             maintenance_percent: 1.0,
             hoa_fee: 1800.0,
@@ -466,6 +477,7 @@ impl CityPreset {
             down_payment_percent: 20.0,
             interest_rate: default_interest_rate(),
             property_tax_rate: 0.9,
+            assessment_cap_percent: None,
             home_insurance_annual: 2800.0,
             maintenance_percent: 1.0,
             hoa_fee: 3000.0,
@@ -497,6 +509,7 @@ impl CityPreset {
             down_payment_percent: 3.0,
             interest_rate: default_interest_rate(),
             property_tax_rate: 1.18,
+            assessment_cap_percent: Some(2.0),
             home_insurance_annual: 1500.0,
             maintenance_percent: 1.0,
             hoa_fee: 500.0,
@@ -526,6 +539,7 @@ impl CityPreset {
             down_payment_percent: 3.0,
             interest_rate: default_interest_rate(),
             property_tax_rate: 1.18,
+            assessment_cap_percent: Some(2.0),
             home_insurance_annual: 1800.0,
             maintenance_percent: 1.0,
             hoa_fee: 600.0,
@@ -555,6 +569,7 @@ impl CityPreset {
             down_payment_percent: 20.0,
             interest_rate: default_interest_rate(),
             property_tax_rate: 1.18,
+            assessment_cap_percent: Some(2.0),
             home_insurance_annual: 2100.0,
             maintenance_percent: 1.0,
             hoa_fee: 700.0,
@@ -584,6 +599,7 @@ impl CityPreset {
             down_payment_percent: 20.0,
             interest_rate: default_interest_rate(),
             property_tax_rate: 1.18,
+            assessment_cap_percent: Some(2.0),
             home_insurance_annual: 2500.0,
             maintenance_percent: 1.0,
             hoa_fee: 850.0,
@@ -649,11 +665,12 @@ mod tests {
     #[test]
     fn test_preset_pmi_and_jumbo_down_payment() {
         // 3% down on $575,000: loan $557,750 * 0.5% / 12 = ~$232/mo
-        assert_eq!(CityPreset::dc_two_bedroom().estimated_monthly_pmi(), 232.0);
+        let dc = CityPreset::dc_two_bedroom().to_property_data();
+        assert!((dc.monthly_pmi() - 232.40).abs() < 0.01);
         // Jumbo presets use 20% down and have no PMI
         let nyc = CityPreset::nyc_two_bedroom();
         assert_eq!(nyc.down_payment_percent, 20.0);
-        assert_eq!(nyc.to_property_data().monthly_pmi, 0.0);
+        assert_eq!(nyc.to_property_data().monthly_pmi(), 0.0);
         // Every preset's 3%-down loan stays under the ~$1.2M jumbo threshold
         for preset in CityPreset::all_presets() {
             if preset.down_payment_percent < 20.0 {

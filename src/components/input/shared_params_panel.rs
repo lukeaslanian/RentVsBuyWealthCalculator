@@ -72,8 +72,7 @@ pub fn SharedParamsPanel(
                         },
                         onblur: move |_| {
                             return_rate_focused.set(false);
-                            let clean_value = return_rate_text().replace("%", "").trim().to_string();
-                            if let Ok(v) = clean_value.parse::<f64>() {
+                            if let Some(v) = crate::utils::CurrencyFormatter::parse_input(&return_rate_text()) {
                                 let mut params = investment_params.write();
                                 params.annual_return_rate = v;
                             }
@@ -168,8 +167,7 @@ pub fn SharedParamsPanel(
                         },
                         onblur: move |_| {
                             inflation_focused.set(false);
-                            let clean_value = inflation_text().replace("%", "").trim().to_string();
-                            if let Ok(v) = clean_value.parse::<f64>() {
+                            if let Some(v) = crate::utils::CurrencyFormatter::parse_input(&inflation_text()) {
                                 let mut params = investment_params.write();
                                 params.inflation_rate = v;
                             }
@@ -222,8 +220,7 @@ pub fn SharedParamsPanel(
                         },
                         onblur: move |_| {
                             cg_focused.set(false);
-                            let clean_value = cg_text().replace("%", "").trim().to_string();
-                            if let Ok(v) = clean_value.parse::<f64>() {
+                            if let Some(v) = crate::utils::CurrencyFormatter::parse_input(&cg_text()) {
                                 let mut params = investment_params.write();
                                 params.capital_gains_tax_rate = v;
                             }

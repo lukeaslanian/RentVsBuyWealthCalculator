@@ -13,6 +13,11 @@ pub fn BuyingInputPanel(
     #[props(default = false)] dark_mode: bool,
 ) -> Element {
     // HPAP eligibility, amounts, and repayment for the current inputs
+    let hpap_max_amount = property_data
+        .read()
+        .hpap_tier()
+        .map(|tier| tier.max_gap_financing)
+        .unwrap_or(0.0);
     let (hpap_eligible, hpap_tier_text, hpap_summary, hpap_room_text, hpap_full_percent) = {
         let data = property_data.read();
         match data.hpap_tier() {
@@ -48,7 +53,7 @@ pub fn BuyingInputPanel(
                 let unused = tier.max_gap_financing - data.hpap_gap_financing();
                 let room_text = if unused > 1.0 {
                     format!(
-                        "You're using {} of your {} HPAP limit. A larger down payment borrows more from HPAP (0%) and less from the bank.",
+                        "You're using {} of your {} HPAP limit. Using more borrows more from HPAP (0%) and less from the bank.",
                         format_currency_input(data.hpap_gap_financing()),
                         format_currency_input(tier.max_gap_financing),
                     )
@@ -58,12 +63,16 @@ pub fn BuyingInputPanel(
                 (true, tier_text, summary, room_text, data.hpap_full_use_down_payment_percent())
             }
             None => {
-                let tier_text = format!(
-                    "Not eligible: household income of {} is above the 110% MFI limit of {} for a household of {}.",
-                    format_currency_input(data.household_income),
-                    format_currency_input(hpap_income_limit(data.hpap_household_size)),
-                    data.hpap_household_size,
-                );
+                let tier_text = if data.hpap_enter_own_max {
+                    "HPAP is on, but you haven't entered your maximum, so no HPAP is applied. Enter your HPAP maximum above, or choose \"Calculate it for me\".".to_string()
+                } else {
+                    format!(
+                        "Not eligible: household income of {} is above the 110% MFI limit of {} for a household of {}.",
+                        format_currency_input(data.household_income),
+                        format_currency_input(hpap_income_limit(data.hpap_household_size)),
+                        data.hpap_household_size,
+                    )
+                };
                 (false, tier_text, String::new(), String::new(), None)
             }
         }
@@ -185,6 +194,56 @@ pub fn BuyingInputPanel(
                     dark_mode: dark_mode,
                 }
 
+                // Assessment growth cap (SF Prop 13, DC homestead)
+                div { class: "space-y-2",
+                    div { class: "flex items-center justify-between",
+                        div {
+                            label { class: if dark_mode { "text-sm font-medium text-monokai-fgMuted" } else { "text-sm font-medium text-monokaiLight-fgMuted" },
+                                "Assessment Growth Cap"
+                            }
+                            p { class: if dark_mode { "text-xs text-monokai-fgDim" } else { "text-xs text-monokaiLight-fgDim" },
+                                "Limits how fast taxable value rises (SF: 2%/yr, DC owner-occupied: 10%/yr)"
+                            }
+                        }
+                        button {
+                            r#type: "button",
+                            class: if property_data.read().enable_assessment_cap {
+                                "relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full bg-monokai-purple transition-colors"
+                            } else if dark_mode {
+                                "relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full bg-monokai-bgLighter transition-colors"
+                            } else {
+                                "relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full bg-monokaiLight-border transition-colors"
+                            },
+                            onclick: move |_| {
+                                let mut data = property_data.write();
+                                data.enable_assessment_cap = !data.enable_assessment_cap;
+                            },
+                            span {
+                                class: if property_data.read().enable_assessment_cap {
+                                    "inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-6"
+                                } else {
+                                    "inline-block h-4 w-4 transform rounded-full bg-white transition-transform translate-x-1"
+                                },
+                            }
+                        }
+                    }
+                    if property_data.read().enable_assessment_cap {
+                        InputField {
+                            label: "Max Assessment Increase (%/year)",
+                            percent: true,
+                            value: property_data.read().assessment_cap_percent,
+                            onchange: move |v| {
+                                let mut data = property_data.write();
+                                data.assessment_cap_percent = v;
+                            },
+                            tooltip: "Taxable value starts at the purchase price and rises at most this much per year (never above market value). Property tax is charged on the taxable value.",
+                            min: Some(0.0),
+                            max: Some(100.0),
+                            dark_mode: dark_mode,
+                        }
+                    }
+                }
+
                 // Home Insurance
                 InputField {
                     label: "Home Insurance ($/year)",
@@ -277,23 +336,40 @@ pub fn BuyingInputPanel(
                     dark_mode: dark_mode,
                 }
 
-                // Monthly PMI
-                InputField {
-                    label: "PMI ($/mo)",
-                    value: property_data.read().monthly_pmi,
-                    onchange: move |v| {
+                // PMI: annual % of the loan, shown with the resulting $/mo
+                DualInputField {
+                    label: "PMI (annual % of loan)",
+                    percent_value: property_data.read().pmi_rate_percent,
+                    dollar_value: property_data.read().monthly_pmi(),
+                    on_percent_change: move |v| {
                         let mut data = property_data.write();
-                        data.monthly_pmi = v;
+                        data.pmi_rate_percent = v;
                     },
-                    tooltip: "Monthly Private Mortgage Insurance (required if down payment < 20%)",
-                    min: Some(0.0),
+                    on_dollar_change: move |dollars_per_month| {
+                        let data_read = property_data.read();
+                        let loan = data_read.loan_amount();
+                        if loan > 0.01 {
+                            let percent = dollars_per_month * 12.0 / loan * 100.0;
+                            drop(data_read);
+                            let mut data = property_data.write();
+                            data.pmi_rate_percent = percent;
+                        }
+                    },
+                    tooltip: "Private mortgage insurance as a yearly % of the first mortgage (typically 0.3-1.0%). It updates automatically with price, down payment and HPAP, and is $0 when the loan starts at or below 80% of the price.",
+                    dollar_label: Some("Monthly PMI ($/mo)".to_string()),
+                    show_first_year_label: false,
+                    percent_min: Some(0.0),
+                    percent_max: Some(5.0),
+                    dollar_min: Some(0.0),
+                    dollar_max: Some(property_data.read().loan_amount().max(0.0) * 0.05 / 12.0),
                     dark_mode: dark_mode,
                 }
 
-                // PMI drop-off LTV threshold (only shown when PMI > 0)
-                if property_data.read().monthly_pmi > 0.0 {
+                // PMI drop-off LTV threshold (only shown when PMI applies)
+                if property_data.read().monthly_pmi() > 0.0 {
                     InputField {
                         label: "PMI Drop-off LTV (%)",
+                        percent: true,
                         value: property_data.read().pmi_drop_off_ltv,
                         onchange: move |v| {
                             let mut data = property_data.write();
@@ -470,8 +546,8 @@ pub fn BuyingInputPanel(
                                         let mut data = property_data.write();
                                         data.hpap_enter_own_max = evt.value() == "own";
                                     },
-                                    option { value: "table", "Calculate it for me (household size + income)" }
                                     option { value: "own", "I know my maximum" }
+                                    option { value: "table", "Calculate it for me (household size + income)" }
                                 }
                             }
 
@@ -512,6 +588,18 @@ pub fn BuyingInputPanel(
                                         option { value: "payments", "No payments for 5 years, then 40-year payments (81-110% MFI)" }
                                     }
                                 }
+
+                                InputField {
+                                    label: "Your Required Contribution ($)",
+                                    value: property_data.read().hpap_own_contribution,
+                                    onchange: move |v| {
+                                        let mut data = property_data.write();
+                                        data.hpap_own_contribution = v;
+                                    },
+                                    tooltip: "Cash you must put in yourself, usually stated in your DHCD paperwork (at least $500, or 50% of liquid assets above $3,000). HPAP covers the rest of the down payment up to your maximum.",
+                                    min: Some(0.0),
+                                    dark_mode: dark_mode,
+                                }
                             } else {
                                 // Household size (DHCD table column)
                                 div {
@@ -551,18 +639,37 @@ pub fn BuyingInputPanel(
                                     max_exclusive: true,
                                     dark_mode: dark_mode,
                                 }
+
+                                InputField {
+                                    label: "Savings / Liquid Assets ($)",
+                                    value: property_data.read().hpap_liquid_assets,
+                                    onchange: move |v| {
+                                        let mut data = property_data.write();
+                                        data.hpap_liquid_assets = v;
+                                    },
+                                    tooltip: "Cash and liquid assets before buying. HPAP requires you to contribute $500 or 50% of liquid assets above $3,000, whichever is greater.",
+                                    min: Some(0.0),
+                                    dark_mode: dark_mode,
+                                }
                             }
 
-                            InputField {
-                                label: "Savings / Liquid Assets ($)",
-                                value: property_data.read().hpap_liquid_assets,
-                                onchange: move |v| {
-                                    let mut data = property_data.write();
-                                    data.hpap_liquid_assets = v;
-                                },
-                                tooltip: "Cash and liquid assets before buying. HPAP requires you to contribute $500 or 50% of liquid assets above $3,000, whichever is greater.",
-                                min: Some(0.0),
-                                dark_mode: dark_mode,
+                            // How much of the maximum to use (sets the total down payment)
+                            if hpap_eligible {
+                                InputField {
+                                    label: "HPAP Amount to Use ($)",
+                                    value: property_data.read().hpap_gap_financing(),
+                                    onchange: move |v| {
+                                        let percent = property_data.read().hpap_down_payment_percent_for(v);
+                                        if let Some(percent) = percent {
+                                            let mut data = property_data.write();
+                                            data.down_payment_percent = percent;
+                                        }
+                                    },
+                                    tooltip: "How much of your HPAP maximum to borrow (0% interest). Your total down payment is set to this amount plus your own contribution. Using more HPAP means a smaller bank mortgage.",
+                                    min: Some(0.0),
+                                    max: Some(hpap_max_amount),
+                                    dark_mode: dark_mode,
+                                }
                             }
 
                             InputField {
@@ -836,29 +943,11 @@ pub fn BuyingInputPanel(
     }
 }
 
-/// Format a number as currency with commas and 2 decimal places
+/// Format a number as currency with commas and 2 decimal places ("$1,234.56").
+/// Delegates to the shared formatter, which rounds to cents before splitting dollars and
+/// cents (so $7,999.9999 shows as $8,000.00, not "$7,999.100").
 fn format_currency_input(value: f64) -> String {
-    let abs_value = value.abs();
-    let integer_part = abs_value.floor() as u64;
-    let decimal_part = ((abs_value - integer_part as f64) * 100.0).round() as u64;
-
-    // Format integer part with commas
-    let integer_str = integer_part.to_string();
-    let mut formatted = String::new();
-    let chars: Vec<char> = integer_str.chars().rev().collect();
-
-    for (i, ch) in chars.iter().enumerate() {
-        if i > 0 && i % 3 == 0 {
-            formatted.push(',');
-        }
-        formatted.push(*ch);
-    }
-
-    let formatted_integer: String = formatted.chars().rev().collect();
-
-    // Add sign and dollar sign
-    let sign = if value < 0.0 { "-" } else { "" };
-    format!("{}${}.{:02}", sign, formatted_integer, decimal_part)
+    crate::utils::CurrencyFormatter::format_currency(value)
 }
 
 #[component]
@@ -871,6 +960,8 @@ fn InputField(
     #[props(default = None)] max: Option<f64>,
     #[props(default = false)] min_exclusive: bool,
     #[props(default = false)] max_exclusive: bool,
+    /// Show and parse the value as a percentage ("10.00%") instead of currency ("$10.00")
+    #[props(default = false)] percent: bool,
     #[props(default = false)] dark_mode: bool,
 ) -> Element {
     let mut is_focused = use_signal(|| false);
@@ -948,7 +1039,11 @@ fn InputField(
                 value: if is_focused() {
                     input_text()
                 } else {
-                    format_currency_input(value)
+                    if percent {
+                        format!("{:.2}%", value)
+                    } else {
+                        format_currency_input(value)
+                    }
                 },
                 inputmode: "decimal",
                 onfocus: move |_| {
@@ -958,8 +1053,7 @@ fn InputField(
                 onblur: move |_| {
                     is_focused.set(false);
                     // Parse and update on blur
-                    let clean_value = input_text().replace(",", "").replace("$", "").trim().to_string();
-                    if let Ok(v) = clean_value.parse::<f64>() {
+                    if let Some(v) = crate::utils::CurrencyFormatter::parse_input(&input_text()) {
                         onchange.call(v);
                     }
                 },
@@ -1037,8 +1131,7 @@ fn InterestRateField(
                 },
                 onblur: move |_| {
                     is_focused.set(false);
-                    let clean_value = input_text().replace("%", "").trim().to_string();
-                    if let Ok(v) = clean_value.parse::<f64>() {
+                    if let Some(v) = crate::utils::CurrencyFormatter::parse_input(&input_text()) {
                         let mut data = property_data.write();
                         data.interest_rate = v;
                     }
